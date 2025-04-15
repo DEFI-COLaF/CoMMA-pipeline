@@ -34,10 +34,9 @@ df = [
 with open("done.txt", "r") as f:
     done = set(f.read().split())
 
-done = [] # DEBUG MODE
 df = [x for x in df if x not in done]
 
-batches = [df[i:i+BATCH_SIZE] for i in range(0, len(df), BATCH_SIZE)]
+batches = [df[i:i+BATCH_SIZE] for i in range(0, len(df), BATCH_SIZE)][1:]
 
 kebab = cases.to_kebab
 
@@ -127,8 +126,9 @@ for batch in batches:
         done = f.read().split()
     with open("done.txt", "w") as f:
         f.write("\n".join(sorted(list(set(done+complete)))))
-    print("[Task] GZIPING")
 
+    # ZIPPING
+    print("[Task] GZIPING")
     create_tar_gz_archives(
         uri_to_files={
             manifest_uri: file_list
@@ -143,6 +143,7 @@ for batch in batches:
         naming_func=lambda x: Path("targz") / Path(str(ordered[x][0].parent.name)+".tar.gz")
     )
 
+    # Remove directories
     for uri in complete:
         dirname = Path("./"+str(ordered[uri][0].parent.name))
         shutil.rmtree(dirname)
