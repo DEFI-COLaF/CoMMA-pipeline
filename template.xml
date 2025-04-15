@@ -1,0 +1,109 @@
+{% set proc_type_table = {'processing': 'contentGeneration',
+              'preprocessing': 'preOperation',
+              'postprocessing': 'postOperation'}
+%}
+{%+ macro render_line(page, line) +%}
+                    <TextLine ID="{{ line.id }}" HPOS="{{ line.bbox[0] }}" VPOS="{{ line.bbox[1] }}" WIDTH="{{ line.bbox[2] - line.bbox[0] }}" HEIGHT="{{ line.bbox[3] - line.bbox[1] }}" {% if line.baseline %}BASELINE="{{ line.baseline|sum(start=[])|join(' ') }}"{% endif %} {% if line.tags %}TAGREFS="{% for type in page.line_types %}{% if type[0] in line.tags and line.tags[type[0]] == type[1] %}LINE_TYPE_{{ loop.index }}{% endif %}{% endfor %}"{% endif %}>
+                        {% if line.boundary %}
+                        <Shape>
+                            <Polygon POINTS="{{ line.boundary|sum(start=[])|join(' ') }}"/>
+                        </Shape>
+                        {% endif %}
+                            {% if line.recognition|length() == 0 %}
+                        <String CONTENT=""/>
+                        {% else %}
+                            <String CONTENT="{{ line.recognition | map(attribute='text') | join('') }}" />
+                        {% endif %}
+                    </TextLine>
+{%+ endmacro %}
+<?xml version="1.0" encoding="UTF-8"?>
+<alto xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://www.loc.gov/standards/alto/ns-v4#"
+    xsi:schemaLocation="http://www.loc.gov/standards/alto/ns-v4# http://www.loc.gov/standards/alto/v4/alto-4-3.xsd">
+    <Description>
+        <MeasurementUnit>pixel</MeasurementUnit>
+        <sourceImageInformation>
+            <fileName>{{ page.name }}</fileName>
+        </sourceImageInformation>
+        {% if metadata.processing_steps %}
+        {% for step in metadata.processing_steps %}
+        <Processing ID="OCR_{{ step.id }}">
+            <processingCategory>{{ proc_type_table[step.category] }}</processingCategory>
+            <processingStepDescription>{{ step.description }}</processingStepDescription>
+            <processingStepSettings>{% for k, v in step.settings.items() %}{{k}}: {{v}}{% if not loop.last %}; {% endif %}{% endfor %}</processingStepSettings>
+            <processingSoftware>
+                <softwareName>kraken</softwareName>
+                <softwareVersion>{{ metadata.version }}</softwareVersion>
+            </processingSoftware>
+        </Processing>
+        {% endfor %}
+        {% else %}
+        <Processing ID="OCR_0">
+            <processingCategory>other</processingCategory>
+            <processingStepDescription>unknown</processingStepDescription>
+            <processingSoftware>
+                <softwareName>kraken</softwareName>
+                <softwareVersion>{{ metadata.version }}</softwareVersion>
+            </processingSoftware>
+        </Processing>
+        {% endif %}
+    </Description>
+    <Tags>
+    {% for type, label in page.line_types %}
+        <OtherTag DESCRIPTION="line type" ID="LINE_TYPE_{{ loop.index }}" TYPE="{{ type }}" LABEL="{{ label }}"/>
+    {% endfor %}
+    {% for label in page.region_types %}
+        <OtherTag DESCRIPTION="region type" ID="REGION_TYPE_{{ loop.index }}" TYPE="region" LABEL="{{ label }}"/>
+    {% endfor %}
+    </Tags>
+    {% if page.line_orders|length() > 0 %}
+    <ReadingOrder>
+        {% if page.line_orders | length == 1 %}
+        <OrderedGroup ID="ro_0">
+           {% for id in page.line_orders[0] %}
+           <ElementRef ID="o_{{ loop.index }}" REF="{{ id }}"/>
+           {% endfor %}
+        </OrderedGroup>
+        {% else %}
+        <UnorderedGroup>
+        {% for ro in page.line_orders %}
+           <OrderedGroup ID="ro_{{ loop.index }}">
+           {% for id in ro %}
+               <ElementRef ID="o_{{ loop.index }}" REF="{{ id }}"/>
+           {% endfor %}
+           </OrderedGroup>
+	{% endfor %}
+        </UnorderedGroup>
+        {% endif %}
+    </ReadingOrder>
+    {% endif %}
+    <Layout>
+        <Page WIDTH="{{ page.size[0] }}" HEIGHT="{{ page.size[1] }}" PHYSICAL_IMG_NR="0" ID="page_0">
+            <PrintSpace HPOS="0" VPOS="0" WIDTH="{{ page.size[0] }}" HEIGHT="{{ page.size[1] }}">
+            {% for entity in page.entities %}
+                {% if entity.type == "region" %}
+                {% if loop.previtem and loop.previtem.type == 'line' %}
+                </TextBlock>
+                {% endif %}
+                <TextBlock ID="{{ entity.id }}" {% if entity.bbox %}HPOS="{{ entity.bbox[0] }}" VPOS="{{ entity.bbox[1] }}" WIDTH="{{ entity.bbox[2] - entity.bbox[0] }}" HEIGHT="{{ entity.bbox[3] - entity.bbox[1] }}"{% endif %} {% if entity.tags %}{% for type in page.region_types %}{% if type in entity.tags.values() %}TAGREFS="REGION_TYPE_{{ loop.index }}"{% endif %}{% endfor %}{% endif %}>
+                    {% if entity.bbox %}<Shape>
+                        <Polygon POINTS="{{ entity.boundary|sum(start=[])|join(' ') }}"/>
+                    </Shape>{% endif %}
+                    {%- for line in entity.lines -%}
+                    {{ render_line(page, line) }}
+                    {%- endfor -%}
+                </TextBlock>
+                {% else %}
+                {% if not loop.previtem or loop.previtem.type != 'line' %}
+                <TextBlock ID="textblock_{{ loop.index }}">
+                {% endif %}
+                    {{ render_line(page, entity) }}
+                {% if loop.last %}
+                </TextBlock>
+                {% endif %}
+            {% endif %}
+            {% endfor %}
+            </PrintSpace>
+        </Page>
+    </Layout>
+</alto>
