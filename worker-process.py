@@ -46,6 +46,7 @@ def process_worker(batch: List[Path]):
         raise_on_error=True,
         multiprocess=KRAKEN_BATCH_SIZE,
         check_content=True,
+        other_options=" --no-subline-segmentation ",
         max_time_per_op=240  #
     )
     kraken.process()
