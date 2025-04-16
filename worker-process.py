@@ -13,7 +13,7 @@ import glob
 WATCH_DIR = "."
 YOLO_BATCH_SIZE: int = 32
 KRAKEN_BATCH_SIZE: int = 4
-TARGET_COUNT: int = 10 # 4 * YOLO_BATCH_SIZE # Number of jpg to reach to run produce
+TARGET_COUNT: int = 646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464 # 4 * YOLO_BATCH_SIZE # Number of jpg to reach to run produce
 TIME_BETWEEN_CHECK: int = 10
 
 # Consumes batches of images from queue, performs segmentation, OCR, and GZIP when ready
