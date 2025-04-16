@@ -12,8 +12,8 @@ import glob
 
 WATCH_DIR = "."
 YOLO_BATCH_SIZE: int = 32
-KRAKEN_BATCH_SIZE: int = 4
-TARGET_COUNT: int = 646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464646464 # 4 * YOLO_BATCH_SIZE # Number of jpg to reach to run produce
+KRAKEN_BATCH_SIZE: int = 24
+TARGET_COUNT: int = 64 # 4 * YOLO_BATCH_SIZE # Number of jpg to reach to run produce
 TIME_BETWEEN_CHECK: int = 10
 
 # Consumes batches of images from queue, performs segmentation, OCR, and GZIP when ready
@@ -92,16 +92,39 @@ def process_worker(batch: List[Path]):
                 with open("done.txt", "w") as f:
                     f.write("\n".join(done))
 
+def find_manifest_dirs(root_dir: str) -> List[str]:
+    """
+    Recursively finds all directories under root_dir that contain a '.manifest.json' file.
+
+    Args:
+        root_dir (str): Path to start the search from.
+
+    Returns:
+        List[str]: List of directory paths containing a '.manifest.json' file.
+    """
+    manifest_dirs = []
+    for dirpath, dirnames, filenames in os.walk(root_dir):
+        if ".manifest.json" in filenames:
+            manifest_dirs.append(dirpath)
+    return manifest_dirs
 
 # Watch for changes in the watch directory
 def watch_directory():
     def get_unprocessed():
-        jpgs = set([file for file in map(Path, glob.glob("./*/*.jpg")) if not file.with_suffix(".xml").exists()])
-        # Check all xml without jpgs
-        for file in sorted(glob.glob("./*/*.xml")):
-            if utils.check_parsable(file) == False or utils.check_content(file) == False:
-                print(f"{Path(file)} needs to be reworked")
-                jpgs.add(Path(file).with_suffix(".jpg"))
+        jpgs = set()
+        for directory in find_manifest_dirs("."):
+            jpgs = jpgs.union(
+                set([
+                    file
+                    for file in map(Path, glob.glob(f"{directory}/*.jpg"))
+                    if not file.with_suffix(".xml").exists()
+                ])
+            )
+            # Check all xml without jpgs
+            for file in sorted(glob.glob(f"./{directory}/*.xml")):
+                if utils.check_parsable(file) == False or utils.check_content(file) == False:
+                    print(f"{Path(file)} needs to be reworked")
+                    jpgs.add(Path(file).with_suffix(".jpg"))
         if len(jpgs) >= TARGET_COUNT:
             process_worker(list(jpgs))
             return True
