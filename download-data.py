@@ -20,11 +20,17 @@ from rtk_adapt import YaltoCommand, create_tar_gz_archives
 from rtk import utils
 import pandas as pd
 import cases
-from typing import Tuple, Dict
+from typing import Tuple, Dict, List
 from pathlib import Path
 import shutil
+import time
 
-BATCH_SIZE = 1
+BATCH_SIZE = 16
+YOLO_BATCH_SIZE = 64
+KRAKEN_BATCH_SIZE = 20
+SLEEP_TIME = 120
+DOWNLOAD_BATCH_SIZE = 10
+
 df = pd.read_csv("extraction_biblissima_20250410.csv", delimiter=";")["manifest_url"].tolist()
 df = [
     uri.replace("https://gallica.bnf.fr/iiif/ark:/12148/", "https://openapi.bnf.fr/iiif/presentation/v3/ark:/12148/")
@@ -40,65 +46,67 @@ batches = [df[i:i+BATCH_SIZE] for i in range(0, len(df), BATCH_SIZE)][1:]
 
 kebab = cases.to_kebab
 
-
-for batch in batches:
-    # Add a logic to check if this document was wholy processed
-
-    # Download Manifests
+def process_batch(batch) -> Tuple[List[str], List[str]]:
     print("[Task] Download manifests")
     dl_manifests = DownloadIIIFManifestTask(
         batch,
         output_directory="output",
-        naming_function=lambda x: kebab(x), multiprocess=10
+        naming_function=lambda x: kebab(x),
+        multiprocess=DOWNLOAD_BATCH_SIZE
     )
     dl_manifests.process()
 
-    # Tuple to Manifest URI
     file_map: Dict[Tuple[str, str, str], str] = dl_manifests.output_files_map.copy()
 
-    # Download Files
     print("[Task] Download JPG")
     dl_images = DownloadIIIFImageTask(
         dl_manifests.output_files,
         max_height=2500,
-        multiprocess=4,
+        multiprocess=DOWNLOAD_BATCH_SIZE,
         downstream_check=DownloadIIIFImageTask.check_downstream_task("xml", utils.check_parsable)
     )
     dl_images.process()
 
+    # Retry once if image download count is off
+    if len(dl_manifests.output_files) != len(dl_images.output_files):
+        print("[Warning] Image download incomplete. Waiting 60 seconds before retry...")
+        time.sleep(SLEEP_TIME)
+        dl_images.process()
+
+        if len(dl_manifests.output_files) != len(dl_images.output_files):
+            print("[Warning] Still mismatch in manifest/image file count after retry.")
+            print(f"Manifests: {len(dl_manifests.output_files)}, Images: {len(dl_images.output_files)}")
+
+    # Update file_map for renamed images
     file_map: Dict[str, str] = {
         dl_images.rename_download(file): uri
         for file, uri in file_map.items()
     }
 
     xmls = YaltoCommand(
-        dl_images.output_files,
-        binary="env/bin/yolalto",
+        list(set(dl_images.output_files)),
+        binary="yolalto",
         model_path="medieval-yolov11x.pt",
-        batch_size=1,
+        batch_size=YOLO_BATCH_SIZE,
         check_content=utils.check_parsable
     )
     xmls.process()
 
-
-    # Apply Kraken
     print("[Task] OCR")
     kraken = KrakenRecognizerCommand(
         xmls.output_files,
-        binary="env/bin/kraken",
-        device="cpu",
+        binary="kraken",
+        device="cuda:0",
         template="template.xml",
         model="catmus-medieval-1.6.0.mlmodel",
         raise_on_error=True,
-        multiprocess=8,  # GPU Memory // 3gb
+        multiprocess=KRAKEN_BATCH_SIZE,
         check_content=True
     )
     kraken.process()
 
-
     outs = defaultdict(list)
     for file in set(kraken.output_files):
-        # Naming is known here, no need to make magical stuff...
         jpg = file.replace(".xml", ".jpg")
         if jpg in file_map:
             outs[file_map[jpg]].append(Path(file))
@@ -107,8 +115,7 @@ for batch in batches:
     for file in file_map:
         mss_lengths[file_map[file]] += 1
 
-    complete = []
-    incomplete = []
+    complete, incomplete = [], []
     for key in outs:
         if len(outs[key]) == mss_lengths[key]:
             complete.append(key)
@@ -119,31 +126,37 @@ for batch in batches:
         uri: [Path(dl_images.rename_download(row)) for row in dl_manifests.parse_cache(uri)]
         for uri in complete
     }
+
     print("COMP:", complete)
     print("INCOMP:", incomplete)
 
     with open("done.txt", "r") as f:
         done = f.read().split()
     with open("done.txt", "w") as f:
-        f.write("\n".join(sorted(list(set(done+complete)))))
+        f.write("\n".join(sorted(list(set(done + complete)))))
 
-    # ZIPPING
     print("[Task] GZIPING")
     create_tar_gz_archives(
-        uri_to_files={
-            manifest_uri: file_list
-            for manifest_uri, file_list in outs.items()
-            if manifest_uri in complete
-        },
-        ordering_dict={
-            manifest_uri: file_list
-            for manifest_uri, file_list in ordered.items()
-            if manifest_uri in complete
-        },
-        naming_func=lambda x: Path("targz") / Path(str(ordered[x][0].parent.name)+".tar.gz")
+        uri_to_files={k: v for k, v in outs.items() if k in complete},
+        ordering_dict={k: v for k, v in ordered.items() if k in complete},
+        naming_func=lambda x: Path("targz") / Path(str(ordered[x][0].parent.name) + ".tar.gz")
     )
 
-    # Remove directories
     for uri in complete:
-        dirname = Path("./"+str(ordered[uri][0].parent.name))
-        shutil.rmtree(dirname)
+        dirname = Path("./" + str(ordered[uri][0].parent.name))
+        shutil.rmtree(dirname, ignore_errors=True)
+
+    return complete, incomplete
+
+
+# --- RUN LOOP WITH RETRY ---
+for batch in batches:
+    _, incomplete = process_batch(batch)
+
+    # Retry once if there are incomplete files
+    if incomplete:
+        print(f"[Retry] Re-processing incomplete items in batch: {incomplete}")
+        _, retry_incomplete = process_batch(incomplete)
+
+        if retry_incomplete:
+            print(f"[Warning] Still incomplete after retry: {retry_incomplete}")
