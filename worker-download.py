@@ -148,9 +148,9 @@ if __name__ == "__main__":
     df = pd.read_csv("extraction_biblissima_20250410.csv", delimiter=";")["manifest_url"].tolist()
     df = [
         uri.replace("https://gallica.bnf.fr/iiif/ark:/12148/", "https://openapi.bnf.fr/iiif/presentation/v3/ark:/12148/")
-        for uri in df if uri not in tracker.done
+        for uri in df
     ]
-
+    df = [uri for uri in df if uri not in tracker.done]
     # Launch producer and consumer
     print("[Main] Starting downloader")
     download_worker(tracker, df)

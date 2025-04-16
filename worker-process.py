@@ -12,7 +12,7 @@ import glob
 
 WATCH_DIR = "."
 YOLO_BATCH_SIZE: int = 32
-KRAKEN_BATCH_SIZE: int = 12
+KRAKEN_BATCH_SIZE: int = 4
 TARGET_COUNT: int = 10 # 4 * YOLO_BATCH_SIZE # Number of jpg to reach to run produce
 TIME_BETWEEN_CHECK: int = 10
 
@@ -45,25 +45,30 @@ def process_worker(batch: List[Path]):
         model="catmus-medieval-1.6.0.mlmodel",
         raise_on_error=True,
         multiprocess=KRAKEN_BATCH_SIZE,
-        check_content=True
+        check_content=True,
+        max_time_per_op=240  #
     )
     kraken.process()
 
     # Register all successful results in the tracker
-    for xml_path in kraken.output_files:
-        manifest: Optional[Manifest] = manifests.get(Path(xml_path).parent)
+    directories_with_processed_files = list(set([
+        Path(xml_path).parent
+        for xml_path in kraken.output_files
+    ]))
+    for directory in directories_with_processed_files:
+        manifest: Optional[Manifest] = manifests.get(directory)
         if not manifest:
             print("Houston we got a problem")
         else:
-
             if manifest.is_complete():
                 print(f"[Processor] Archiving complete manifest {manifest.directory}")
-                paths = list([Path(image).with_suffix(".xml") for image in manifest.image_order])
+                paths = list([Path(directory) / Path(image).with_suffix(".xml") for image in manifest.image_order])
+                print(paths)
                 if not paths:
                     continue
 
                 def _get_order(_path: Path) -> int:
-                    return manifest.image_order.index(_path.with_suffix(".jpg").name)
+                    return manifest.image_order.index(_path.with_suffix("").name)
 
                 # Create ordering based on JPGs with same stem
                 ordering = sorted(paths, key=_get_order)
@@ -72,7 +77,7 @@ def process_worker(batch: List[Path]):
                 create_tar_gz_archives(
                     uri_to_files={manifest.manifest_id: paths},
                     ordering_dict={manifest.manifest_id: ordering},
-                    naming_func=lambda x: Path("targz") / (manifest.directory.name + ".tar.gz")
+                    naming_func=lambda x: Path("targz") / (Path(manifest.directory).name + ".tar.gz")
                 )
 
                 # Cleanup

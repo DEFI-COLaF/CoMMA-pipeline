@@ -9,11 +9,7 @@
                             <Polygon POINTS="{{ line.boundary|sum(start=[])|join(' ') }}"/>
                         </Shape>
                         {% endif %}
-                            {% if line.recognition|length() == 0 %}
-                        <String CONTENT=""/>
-                        {% else %}
-                            <String CONTENT="{{ line.recognition | map(attribute='text') | join('') }}" />
-                        {% endif %}
+                        <String CONTENT="{{line.text}}"/>
                     </TextLine>
 {%+ endmacro %}
 <?xml version="1.0" encoding="UTF-8"?>

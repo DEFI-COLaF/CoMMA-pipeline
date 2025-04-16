@@ -39,7 +39,12 @@ class Manifest:
         return cls(**d)
 
     def is_complete(self) -> bool:
-        return len(glob.glob(str(Path(self.directory) / "*.xml"))) == self.total_images
+        done = [
+            file
+            for file in glob.glob(str(Path(self.directory) / "*.xml"))
+            if utils.check_parsable(file) and utils.check_content(file, ratio=1)
+        ]
+        return len(done) == self.total_images
 
 
 class YaltoCommand(Task):
