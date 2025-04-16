@@ -71,6 +71,7 @@ class YaltoCommand(Task):
         self.max_time_per_op: int = max_time_per_op
         self.desc: str = desc
         self.model_path = model_path
+        self.allow_failure = kwargs.get("allow_failure", True)
 
         self.command = f"{binary} --batch-size {batch_size} R {self.model_path}".split(" ")
         self.command: List[str] = [x for x in self.command if x]
