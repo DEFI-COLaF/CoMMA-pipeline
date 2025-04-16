@@ -11,7 +11,31 @@ import re
 from pathlib import Path
 import tarfile
 import io
+import dataclasses
+import json
+import glob
 
+
+@dataclasses.dataclass
+class Manifest:
+    manifest_id: str = ""
+    directory: str = ""
+    image_order: List[str] = dataclasses.field(default_factory=list)
+    total_images: int = 0
+    images: List[str] = dataclasses.field(default_factory=list)
+
+    def to_json(self):
+        with open(Path(self.directory) / ".manifest.json", "w") as f:
+            json.dump(dataclasses.asdict(self))
+
+    @classmethod
+    def from_json(cls, path: str):
+        with open(path) as f:
+            d = json.load(f)
+        return cls(**d)
+
+    def is_complete(self) -> bool:
+        return len(glob.glob(str(Path(self.directory) / "*.xml"))) == self.total_images
 
 
 class YaltoCommand(Task):
