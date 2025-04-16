@@ -2,29 +2,28 @@ import time
 from pathlib import Path
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
-from typing import Set, List, Dict
+from typing import Set, List, Dict, Optional
 from rtk_adapt import YaltoCommand, Manifest, create_tar_gz_archives
 from rtk import utils
 from rtk.task import KrakenRecognizerCommand
 import shutil
+import glob
 
 
 WATCH_DIR = "."
-JPG_FILES_DETECTED: Set[Path] = set()
-TARGET_COUNT: int = 10 # Number of jpg to reach to run produce
 YOLO_BATCH_SIZE: int = 32
-KRAKEN_BATCH_SIZE: int = 2
+KRAKEN_BATCH_SIZE: int = 12
+TARGET_COUNT: int = 10 # 4 * YOLO_BATCH_SIZE # Number of jpg to reach to run produce
+TIME_BETWEEN_CHECK: int = 10
 
 # Consumes batches of images from queue, performs segmentation, OCR, and GZIP when ready
-async def process_worker(batch: List[Path]):
+def process_worker(batch: List[Path]):
     # Deduplicate paths and reconstruct manifest mapping
     images = [str(item) for item in batch]
     manifests: Dict[str, Manifest] = {}
-    manifest_map = {}
     for image in batch:
         if image.parent not in manifests:
             manifests[image.parent] = Manifest.from_json(image.parent / ".manifest.json")
-        manifest_map[image.image_path] = manifests[image.parent].manifest_id
 
     print("[Processor] Segmenting with YALTAi")
     xmls = YaltoCommand(
@@ -41,7 +40,7 @@ async def process_worker(batch: List[Path]):
     kraken = KrakenRecognizerCommand(
         xmls.output_files,
         binary="kraken",
-        device="cuda:0",
+        device="cpu",
         template="template.xml",
         model="catmus-medieval-1.6.0.mlmodel",
         raise_on_error=True,
@@ -52,20 +51,16 @@ async def process_worker(batch: List[Path]):
 
     # Register all successful results in the tracker
     for xml_path in kraken.output_files:
-        img_path = Path(xml_path).with_suffix(".jpg")
-        manifest_id = manifest_map.get(img_path)
-        if not manifest_id:
+        manifest: Optional[Manifest] = manifests.get(Path(xml_path).parent)
+        if not manifest:
             print("Houston we got a problem")
         else:
-            manifest = manifests[manifest_id]
+
             if manifest.is_complete():
-                print(f"[Processor] Archiving complete manifest {manifest_id}")
+                print(f"[Processor] Archiving complete manifest {manifest.directory}")
                 paths = list([Path(image).with_suffix(".xml") for image in manifest.image_order])
                 if not paths:
                     continue
-
-                # Get the staging folder from the parent of any file
-                stage_folder = manifest.directory
 
                 def _get_order(_path: Path) -> int:
                     return manifest.image_order.index(_path.with_suffix(".jpg").name)
@@ -75,13 +70,13 @@ async def process_worker(batch: List[Path]):
 
                 # Archive
                 create_tar_gz_archives(
-                    uri_to_files={manifest_id: paths},
-                    ordering_dict={manifest_id: ordering},
-                    naming_func=lambda x: Path("targz") / (stage_folder.name + ".tar.gz")
+                    uri_to_files={manifest.manifest_id: paths},
+                    ordering_dict={manifest.manifest_id: ordering},
+                    naming_func=lambda x: Path("targz") / (manifest.directory.name + ".tar.gz")
                 )
 
                 # Cleanup
-                shutil.rmtree(stage_folder, ignore_errors=True)
+                shutil.rmtree(manifest.directory, ignore_errors=True)
                 try:
                     with open("done.txt", "r") as f:
                         done = f.read().split()
@@ -92,40 +87,28 @@ async def process_worker(batch: List[Path]):
                     f.write("\n".join(done))
 
 
-# Watchdog event handler to trigger the producer when a new .jpg file is added
-class JPGFileHandler(FileSystemEventHandler):
-    def on_created(self, event):
-        if event.is_directory:
-            return
-        global JPG_FILES_DETECTED
-
-        file_path = Path(event.src_path)
-        if file_path.suffix == ".jpg":
-            print(f"Detected .jpg file: {file_path}")
-            # Add to the set of .jpg files without .xml
-            if not file_path.with_suffix(".xml").exists():
-                JPG_FILES_DETECTED.add(file_path)
-            # Trigger the producer if there are 100 .jpg files without .xml files
-            if len(JPG_FILES_DETECTED) >= TARGET_COUNT:
-                print(f"Found {TARGET_COUNT} images to process, processing")
-                process_worker(list(JPG_FILES_DETECTED))
-                JPG_FILES_DETECTED = set()
-
 # Watch for changes in the watch directory
 def watch_directory():
-    event_handler = JPGFileHandler()
-    observer = Observer()
-    observer.schedule(event_handler, WATCH_DIR, recursive=False)
-    observer.start()
+    def get_unprocessed():
+        jpgs = set([file for file in map(Path, glob.glob("./*/*.jpg")) if not file.with_suffix(".xml").exists()])
+        # Check all xml without jpgs
+        for file in sorted(glob.glob("./*/*.xml")):
+            if utils.check_parsable(file) == False or utils.check_content(file) == False:
+                print(f"{Path(file)} needs to be reworked")
+                jpgs.add(Path(file).with_suffix(".jpg"))
+        if len(jpgs) >= TARGET_COUNT:
+            process_worker(list(jpgs))
+            return True
+        elif Path(".totally_done").exists():
+            process_worker(list(jpgs))
+            print("Finished")
+            return False
 
-    try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        observer.stop()
-    observer.join()
-    if JPG_FILES_DETECTED:
-        process_worker(list(JPG_FILES_DETECTED))
+        print("Nothing found, waiting")
+        return True
+
+    while get_unprocessed():
+        time.sleep(TIME_BETWEEN_CHECK)
 
 
 

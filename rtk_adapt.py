@@ -22,11 +22,15 @@ class Manifest:
     directory: str = ""
     image_order: List[str] = dataclasses.field(default_factory=list)
     total_images: int = 0
-    images: List[str] = dataclasses.field(default_factory=list)
+
+    @property
+    def images(self):
+        return self.image_order
 
     def to_json(self):
+        os.makedirs(self.directory, exist_ok=True)
         with open(Path(self.directory) / ".manifest.json", "w") as f:
-            json.dump(dataclasses.asdict(self))
+            json.dump(dataclasses.asdict(self), f)
 
     @classmethod
     def from_json(cls, path: str):

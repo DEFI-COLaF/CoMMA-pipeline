@@ -2,14 +2,14 @@ import asyncio
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Dict, Tuple, Optional, Set
+from typing import List, Dict, Tuple, Set
 from collections import defaultdict
 
+import glob
 import pandas as pd
-from rtk.task import DownloadIIIFImageTask, DownloadIIIFManifestTask, KrakenRecognizerCommand
-from rtk_adapt import YaltoCommand, create_tar_gz_archives
+from rtk.task import DownloadIIIFImageTask, DownloadIIIFManifestTask
 from rtk import utils
-import shutil
+from rtk_adapt import Manifest
 import cases
 
 # Constants
@@ -19,8 +19,8 @@ KRAKEN_BATCH_SIZE = 20            # Batch size for Kraken OCR
 PROCESS_BATCH_SIZE = 5          # Number of images to process per queue job
 RETRY_LIMIT = 3                   # How many times to retry a manifest
 RETRY_DELAY = 120                 # Seconds to wait before retrying a failed manifest
-MAX_QUEUE_SIZE = 3 #1000 // PROCESS_BATCH_SIZE  # Number of batch that we can keep without processing
-
+MAX_QUEUE_SIZE = 20 #1000 // PROCESS_BATCH_SIZE  # Number of batch that we can keep without processing
+SLEEP_TIME_BETWEEN_POOL_CHECK = 60
 
 # Represents a successfully downloaded image and which manifest it belongs to
 @dataclass
@@ -71,10 +71,8 @@ class ManifestTracker:
         self.completed[manifest_id].add(path)
 
 # Downloads manifests and images, puts image batches on queue for processing
-async def download_worker(queue: asyncio.Queue, tracker: ManifestTracker, manifest_urls: List[str]):
+def download_worker(tracker: ManifestTracker, manifest_urls: List[str]):
     kebab = cases.to_kebab
-
-    loop = asyncio.get_event_loop()
 
     # Break up manifest list into smaller download groups
     manifest_batches = [manifest_urls[i:i+DOWNLOAD_BATCH_SIZE] for i in range(0, len(manifest_urls), DOWNLOAD_BATCH_SIZE)]
@@ -104,6 +102,15 @@ async def download_worker(queue: asyncio.Queue, tracker: ManifestTracker, manife
         for uri in image_count:
             tracker.add_expected(uri, image_count[uri])
 
+        for manifest_uri in tracker.manifest_to_directory:
+            m = Manifest(
+                manifest_id=manifest_uri,
+                directory=tracker.manifest_to_directory[manifest_uri],
+                image_order=tracker.order[manifest_uri],
+                total_images=tracker.expected[manifest_uri]
+            )
+            m.to_json()
+
         # To allow for a more frequent download -> process system, we treat image download
         #   in a separate batching approach
         for i in range(0, len(images_to_download), PROCESS_BATCH_SIZE):
@@ -117,39 +124,24 @@ async def download_worker(queue: asyncio.Queue, tracker: ManifestTracker, manife
                 downstream_check=DownloadIIIFImageTask.check_downstream_task("xml", utils.check_parsable)
             )
 
-            # We have a maximum set of retries for downloading images
-            #   And we check that everything was downloaded
             retries = 0
             while len(set(dl_images.output_files)) < len(image_download_batch) and retries < RETRY_LIMIT:
                 if retries > 0:
                     print("[Downloader] Incomplete image download, retrying after sleep...")
-                    await asyncio.sleep(RETRY_DELAY)
+                    time.sleep(RETRY_DELAY)
                 dl_images.process()
                 retries += 1
 
-            # Recorde the image download
-            downloaded_images = sorted(list(set(dl_images.output_files)))
-            # We record for each image to download a Filepath<>Manifest URI link
-            #    img_tuple[1] is the output directory
-            image_path_to_uri: Dict[str, str] = {
-                dl_images.rename_download(image_tuple): tracker.directory_to_manifest[image_tuple[1]]
-                for image_tuple in image_download_batch
-            }
+            while (len(glob.glob("./*/*.jpg"))-len(glob.glob("./*/*.xml"))) >= MAX_QUEUE_SIZE:
+                print("Waiting for some queue space")
+                time.sleep(SLEEP_TIME_BETWEEN_POOL_CHECK)
 
-            # Now, we look into what was actually downloaded
-            #   and map image to a DownloadedImage type
-            downloaded_batch = [
-                DownloadedImage(manifest_id=image_path_to_uri[image_path], image_path=Path(image_path))
-                for image_path in downloaded_images if image_path in image_path_to_uri
-            ]
-            await queue.put(downloaded_batch)
-    await queue.put("END")
-    return
+    with open(".totally_done", "w") as f:
+        f.write("")
 
 
-# Orchestrates downloader and processor, manages manifest list and queue
-async def main():
-    queue = asyncio.Queue(maxsize=MAX_QUEUE_SIZE)  # Backpressure: max number of pending batches
+# Entrypoint
+if __name__ == "__main__":
     tracker = ManifestTracker()
 
     # Load manifests and filter out already completed ones
@@ -160,15 +152,5 @@ async def main():
     ]
 
     # Launch producer and consumer
-    print("[Main] Starting producer and consumer")
-    producer = asyncio.create_task(download_worker(queue, tracker, df))
-    consumer = asyncio.create_task(process_worker(queue, tracker))
-
-    # Wait for producer to finish and queue to empty
-    await producer  # Await producer completion
-    await queue.join()  # Ensure the queue has been fully processed
-    consumer.cancel()  # Cancel consumer once queue is empty
-
-# Entrypoint
-if __name__ == "__main__":
-    asyncio.run(main())
+    print("[Main] Starting downloader")
+    download_worker(tracker, df)
