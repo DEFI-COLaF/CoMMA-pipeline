@@ -35,7 +35,7 @@ def archive(directories_with_processed_files: List[Path], manifests: Dict[Path, 
     for directory in directories_with_processed_files:
         manifest: Optional[Manifest] = manifests.get(directory)
         if not manifest:
-            print(f"Houston we got a problem for {manifest}")
+            print(f"Houston we got a problem for {directory} (No Manifest)")
         else:
             if manifest.is_complete(checking_function=custom_check_util, log=True):
                 print(f"[Processor] Archiving complete manifest {manifest.directory}")
