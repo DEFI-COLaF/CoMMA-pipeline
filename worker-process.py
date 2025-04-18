@@ -19,14 +19,32 @@ KRAKEN_BATCH_SIZE: int = 24
 TARGET_COUNT: int = 64 # 4 * YOLO_BATCH_SIZE # Number of jpg to reach to run produce
 TIME_BETWEEN_CHECK: int = 10
 
+CACHED_DONE = {}
+CACHED_PARSABLE = {}
 
-def custom_check_util(filepath: str, ratio: int = 1) -> bool:
-    if utils.check_content(filepath, ratio):
+
+def custom_layout_check(filepath) -> bool:
+    if CACHED_PARSABLE.get(filepath):
         return True
-    xml = et.parse(filepath)
-    for element in xml.xpath("//a:processingCategory", namespaces={"a": "http://www.loc.gov/standards/alto/ns-v4#"}):
-        if element.text.strip() == "contentGeneration":
-            return True
+    if utils.check_parsable(filepath):
+        CACHED_PARSABLE[filepath] = True
+        return True
+    return False
+
+def custom_ocr_check(filepath: str, ratio: int = 1) -> bool:
+    if CACHED_DONE.get(filepath):
+        return True
+    if utils.check_content(filepath, ratio):
+        CACHED_DONE[filepath] = True
+        return True
+    try:
+        xml = et.parse(filepath)
+        for element in xml.xpath("//a:processingCategory", namespaces={"a": "http://www.loc.gov/standards/alto/ns-v4#"}):
+            if element.text.strip() == "contentGeneration":
+                CACHED_DONE[filepath] = True
+                return True
+    except Exception:
+        return False
     return False
 
 
@@ -37,7 +55,7 @@ def archive(directories_with_processed_files: List[Path], manifests: Dict[Path, 
         if not manifest:
             print(f"Houston we got a problem for {directory} (No Manifest)")
         else:
-            if manifest.is_complete(checking_function=custom_check_util, log=True):
+            if manifest.is_complete(checking_function=custom_ocr_check, log=True):
                 print(f"[Processor] Archiving complete manifest {manifest.directory}")
                 paths = list([Path(directory) / Path(image).with_suffix(".xml") for image in manifest.image_order])
 
@@ -94,7 +112,7 @@ def process_worker(batch: List[Path]):
         binary="yolalto",
         model_path="medieval-yolov11x.pt",
         batch_size=YOLO_BATCH_SIZE,
-        check_content=utils.check_parsable
+        check_content=custom_layout_check
     )
     xmls.process()
 
@@ -110,7 +128,7 @@ def process_worker(batch: List[Path]):
         raise_on_error=False,
         multiprocess=KRAKEN_BATCH_SIZE,
         check_content=True,
-        custom_check_function=custom_check_util,
+        custom_check_function=custom_ocr_check,
         other_options=" --no-subline-segmentation ",
         max_time_per_op=240  #
     )
@@ -148,6 +166,7 @@ def find_manifest_dirs(root_dir: str) -> List[str]:
 
 # Watch for changes in the watch directory
 def watch_directory():
+
     def get_unprocessed():
         jpgs = set()
         for directory in find_manifest_dirs("."):
@@ -160,7 +179,8 @@ def watch_directory():
             )
             # Check all xml without jpgs
             for file in sorted(glob.glob(f"./{directory}/*.xml")):
-                if not custom_check_util(file):
+                # If OCR was not done, it means it needs to be done :)
+                if not custom_ocr_check(file):
                     jpgs.add(Path(file).with_suffix(".jpg"))
         if len(jpgs) >= TARGET_COUNT:
             process_worker(list(jpgs))
