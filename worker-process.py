@@ -40,7 +40,6 @@ def archive(directories_with_processed_files: List[Path], manifests: Dict[Path, 
             if manifest.is_complete(checking_function=custom_check_util, log=True):
                 print(f"[Processor] Archiving complete manifest {manifest.directory}")
                 paths = list([Path(directory) / Path(image).with_suffix(".xml") for image in manifest.image_order])
-                print(map(str, paths))
 
                 if not paths:
                     continue

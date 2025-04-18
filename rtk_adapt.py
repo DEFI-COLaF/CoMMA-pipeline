@@ -49,6 +49,7 @@ class Manifest:
         ]
         if log:
             print(f"{self.manifest_id}: {len(done)} imgs / {self.total_images} jpgs")
+
         return len(done) == self.total_images
 
 

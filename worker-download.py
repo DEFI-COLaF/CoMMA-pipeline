@@ -124,7 +124,7 @@ def download_worker(tracker: ManifestTracker, manifest_urls: List[str]):
                 multiprocess=DOWNLOAD_BATCH_SIZE,
                 downstream_check=DownloadIIIFImageTask.check_downstream_task("xml", utils.check_parsable)
             )
-
+            dl_images.process()
             #retries = 0
             #while len(set(dl_images.output_files)) < len(image_download_batch) and retries < RETRY_LIMIT:
             #    if retries > 0:
