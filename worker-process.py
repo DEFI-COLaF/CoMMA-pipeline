@@ -41,6 +41,10 @@ def archive(directories_with_processed_files: List[Path], manifests: Dict[Path, 
                 paths = list([Path(directory) / Path(image).with_suffix(".xml") for image in manifest.image_order])
                 if not paths:
                     continue
+                for xml_file in tqdm.tqdm(paths, desc="Checking that all files are done"):
+                    if not custom_check_util(str(xml_file)):
+                        print(f"{xml_file} is not finished processing.")
+                        continue
 
 
                 def _get_order(_path: Path) -> int:
@@ -154,7 +158,6 @@ def watch_directory():
             # Check all xml without jpgs
             for file in sorted(glob.glob(f"./{directory}/*.xml")):
                 if utils.check_parsable(file) == False or custom_check_util(file) == False:
-                    #print(f"{Path(file)} needs to be reworked")
                     jpgs.add(Path(file).with_suffix(".jpg"))
         if len(jpgs) >= TARGET_COUNT:
             process_worker(list(jpgs))
@@ -170,9 +173,8 @@ def watch_directory():
     while get_unprocessed():
         time.sleep(TIME_BETWEEN_CHECK)
 
-
-
 # Run the producer (watcher)
 if __name__ == "__main__":
+    print("Hello, let's go")
     clean_up_archives()
     watch_directory()
