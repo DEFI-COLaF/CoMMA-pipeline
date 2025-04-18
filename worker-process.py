@@ -9,6 +9,7 @@ import random
 import glob
 import os
 import lxml.etree as et
+import tqdm
 
 
 WATCH_DIR = "."
@@ -16,6 +17,7 @@ YOLO_BATCH_SIZE: int = 32
 KRAKEN_BATCH_SIZE: int = 24
 TARGET_COUNT: int = 64 # 4 * YOLO_BATCH_SIZE # Number of jpg to reach to run produce
 TIME_BETWEEN_CHECK: int = 10
+
 
 def custom_check_util(filepath: str, ratio: int = 1) -> bool:
     if utils.check_content(filepath, ratio):
@@ -27,48 +29,8 @@ def custom_check_util(filepath: str, ratio: int = 1) -> bool:
     return False
 
 
-# Consumes batches of images from queue, performs segmentation, OCR, and GZIP when ready
-def process_worker(batch: List[Path]):
-    # Deduplicate paths and reconstruct manifest mapping
-    images = [str(item) for item in batch]
-    manifests: Dict[str, Manifest] = {}
-    for image in batch:
-        if image.parent not in manifests:
-            manifests[image.parent] = Manifest.from_json(image.parent / ".manifest.json")
-
-    print("[Processor] Segmenting with YALTAi")
-    xmls = YaltoCommand(
-        images,
-        binary="yolalto",
-        model_path="medieval-yolov11x.pt",
-        batch_size=YOLO_BATCH_SIZE,
-        check_content=utils.check_parsable
-    )
-    xmls.process()
-
-    files = [] + xmls.output_files
-    random.shuffle(files)
-    print("[Processor] OCR with Kraken")
-    kraken = KrakenRecognizerCommand(
-        xmls.output_files,
-        binary="kraken",
-        device="cpu",
-        template="template.xml",
-        model="catmus-medieval-1.6.0.mlmodel",
-        custom_check_function=custom_check_util,
-        raise_on_error=False,
-        multiprocess=KRAKEN_BATCH_SIZE,
-        check_content=True,
-        other_options=" --no-subline-segmentation ",
-        max_time_per_op=240  #
-    )
-    kraken.process()
-
-    # Register all successful results in the tracker
-    directories_with_processed_files = list(set([
-        Path(xml_path).parent
-        for xml_path in kraken.output_files
-    ]))
+def archive(directories_with_processed_files: List[Path], manifests: Dict[Path, Manifest]):
+    print(f"Checking {len(directories_with_processed_files)} for archival process")
     for directory in directories_with_processed_files:
         manifest: Optional[Manifest] = manifests.get(directory)
         if not manifest:
@@ -77,12 +39,13 @@ def process_worker(batch: List[Path]):
             if manifest.is_complete():
                 print(f"[Processor] Archiving complete manifest {manifest.directory}")
                 paths = list([Path(directory) / Path(image).with_suffix(".xml") for image in manifest.image_order])
-                #print(paths)
                 if not paths:
                     continue
 
+
                 def _get_order(_path: Path) -> int:
                     return manifest.image_order.index(_path.with_suffix("").name)
+
 
                 # Create ordering based on JPGs with same stem
                 ordering = sorted(paths, key=_get_order)
@@ -104,6 +67,61 @@ def process_worker(batch: List[Path]):
                 done.append(manifest.manifest_id)
                 with open("done.txt", "w") as f:
                     f.write("\n".join(done))
+
+
+def clean_up_archives():
+    print("Running clean-up")
+    manifests: Dict[Path, Manifest] = {}
+    directories: List[Path] = list(map(Path, find_manifest_dirs(".")))
+    for directory in directories:
+        manifests[directory] = Manifest.from_json(str(directory / ".manifest.json"))
+    archive(directories, manifests)
+
+
+# Consumes batches of images from queue, performs segmentation, OCR, and GZIP when ready
+def process_worker(batch: List[Path]):
+    # Deduplicate paths and reconstruct manifest mapping
+    images = [str(item) for item in batch]
+    manifests: Dict[Path, Manifest] = {}
+    for image in batch:
+        if image.parent not in manifests:
+            manifests[image.parent] = Manifest.from_json(str(image.parent / ".manifest.json"))
+
+    print("[Processor] Segmenting with YALTAi")
+    xmls = YaltoCommand(
+        images,
+        binary="yolalto",
+        model_path="medieval-yolov11x.pt",
+        batch_size=YOLO_BATCH_SIZE,
+        check_content=utils.check_parsable
+    )
+    xmls.process()
+
+    files = [] + xmls.output_files
+    random.shuffle(files)
+    print("[Processor] OCR with Kraken")
+    kraken = KrakenRecognizerCommand(
+        xmls.output_files,
+        binary="kraken",
+        device="cpu",
+        template="template.xml",
+        model="catmus-medieval-1.6.0.mlmodel",
+        raise_on_error=False,
+        multiprocess=KRAKEN_BATCH_SIZE,
+        check_content=True,
+        custom_check_function=custom_check_util,
+        other_options=" --no-subline-segmentation ",
+        max_time_per_op=240  #
+    )
+    kraken.process()
+
+    # Register all successful results in the tracker
+    directories_with_processed_files = list(set([
+        Path(xml_path).parent
+        for xml_path in kraken.output_files
+    ]))
+    archive(directories_with_processed_files, manifests)
+
 
 def find_manifest_dirs(root_dir: str) -> List[str]:
     """
@@ -156,4 +174,5 @@ def watch_directory():
 
 # Run the producer (watcher)
 if __name__ == "__main__":
+    clean_up_archives()
     watch_directory()
