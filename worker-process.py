@@ -9,6 +9,7 @@ import random
 import glob
 import os
 import lxml.etree as et
+import json
 import tqdm
 
 
@@ -138,9 +139,15 @@ def find_manifest_dirs(root_dir: str) -> List[str]:
         List[str]: List of directory paths containing a '.manifest.json' file.
     """
     manifest_dirs = []
-    for dirpath, dirnames, filenames in os.walk(root_dir):
-        if ".manifest.json" in filenames:
-            manifest_dirs.append(dirpath)
+    for manifest_file in map(Path, glob.glob(f"{root_dir}/*/.manifest.json")):
+        try:
+            with open(str(manifest_file)) as f:
+                json.load(f)
+            # print(f"Found {manifest_file.parent}")
+            manifest_dirs.append(str(manifest_file.parent))
+        except Exception:
+            print(f"Unparsable {manifest_file}")
+
     return manifest_dirs
 
 # Watch for changes in the watch directory
