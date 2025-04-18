@@ -1,13 +1,14 @@
 import time
 from pathlib import Path
-from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler
 from typing import Set, List, Dict, Optional
 from rtk_adapt import YaltoCommand, Manifest, create_tar_gz_archives
 from rtk import utils
 from rtk.task import KrakenRecognizerCommand
 import shutil
+import random
 import glob
+import os
+import lxml.etree as et
 
 
 WATCH_DIR = "."
@@ -15,6 +16,16 @@ YOLO_BATCH_SIZE: int = 32
 KRAKEN_BATCH_SIZE: int = 24
 TARGET_COUNT: int = 64 # 4 * YOLO_BATCH_SIZE # Number of jpg to reach to run produce
 TIME_BETWEEN_CHECK: int = 10
+
+def custom_check_util(filepath: str, ratio: int = 1) -> bool:
+    if utils.check_content(filepath, ratio):
+        return True
+    xml = et.parse(filepath)
+    for element in xml.xpath("//a:processingCategory", namespaces={"a": "http://www.loc.gov/standards/alto/ns-v4#"}):
+        if element.text.strip() == "contentGeneration":
+            return True
+    return False
+
 
 # Consumes batches of images from queue, performs segmentation, OCR, and GZIP when ready
 def process_worker(batch: List[Path]):
@@ -35,7 +46,8 @@ def process_worker(batch: List[Path]):
     )
     xmls.process()
 
-
+    files = [] + xmls.output_files
+    random.shuffle(files)
     print("[Processor] OCR with Kraken")
     kraken = KrakenRecognizerCommand(
         xmls.output_files,
@@ -43,7 +55,8 @@ def process_worker(batch: List[Path]):
         device="cpu",
         template="template.xml",
         model="catmus-medieval-1.6.0.mlmodel",
-        raise_on_error=True,
+        custom_check_function=custom_check_util,
+        raise_on_error=False,
         multiprocess=KRAKEN_BATCH_SIZE,
         check_content=True,
         other_options=" --no-subline-segmentation ",
@@ -64,7 +77,7 @@ def process_worker(batch: List[Path]):
             if manifest.is_complete():
                 print(f"[Processor] Archiving complete manifest {manifest.directory}")
                 paths = list([Path(directory) / Path(image).with_suffix(".xml") for image in manifest.image_order])
-                print(paths)
+                #print(paths)
                 if not paths:
                     continue
 
@@ -122,8 +135,8 @@ def watch_directory():
             )
             # Check all xml without jpgs
             for file in sorted(glob.glob(f"./{directory}/*.xml")):
-                if utils.check_parsable(file) == False or utils.check_content(file) == False:
-                    print(f"{Path(file)} needs to be reworked")
+                if utils.check_parsable(file) == False or custom_check_util(file) == False:
+                    #print(f"{Path(file)} needs to be reworked")
                     jpgs.add(Path(file).with_suffix(".jpg"))
         if len(jpgs) >= TARGET_COUNT:
             process_worker(list(jpgs))

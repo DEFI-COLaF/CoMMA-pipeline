@@ -13,12 +13,12 @@ from rtk_adapt import Manifest
 import cases
 
 # Constants
-DOWNLOAD_BATCH_SIZE = 4         # Number of manifests to download in parallel
-PROCESS_BATCH_SIZE = 124        # Number of images to process per queue job
-RETRY_LIMIT = 3                 # How many times to retry a manifest
-RETRY_DELAY = 120               # Seconds to wait before retrying a failed manifest
-MAX_QUEUE_SIZE = 1240           # Number of batch that we can keep without processing
-SLEEP_TIME_BETWEEN_POOL_CHECK = 60
+DOWNLOAD_BATCH_SIZE = 15         # Number of manifests to download in parallel
+PROCESS_BATCH_SIZE = 1000        # Number of images to process per queue job
+RETRY_LIMIT = 2                  # How many times to retry a manifest
+RETRY_DELAY = 60                 # Seconds to wait before retrying a failed manifest
+MAX_QUEUE_SIZE = 1240*4          # Number of batch that we can keep without processing
+SLEEP_TIME_BETWEEN_POOL_CHECK = 0
 
 # Represents a successfully downloaded image and which manifest it belongs to
 @dataclass
@@ -81,7 +81,7 @@ def download_worker(tracker: ManifestTracker, manifest_urls: List[str]):
             batch,
             output_directory="output",
             naming_function=kebab,
-            multiprocess=DOWNLOAD_BATCH_SIZE
+            multiprocess=DOWNLOAD_BATCH_SIZE // 2
         )
         dl_manifests.process()
 
@@ -118,17 +118,20 @@ def download_worker(tracker: ManifestTracker, manifest_urls: List[str]):
             dl_images = DownloadIIIFImageTask(
                 image_download_batch,
                 max_height=2500,
+                retries_no_options=RETRY_LIMIT,
+                retries=RETRY_LIMIT,
+                time_between_retries=RETRY_DELAY,
                 multiprocess=DOWNLOAD_BATCH_SIZE,
                 downstream_check=DownloadIIIFImageTask.check_downstream_task("xml", utils.check_parsable)
             )
 
-            retries = 0
-            while len(set(dl_images.output_files)) < len(image_download_batch) and retries < RETRY_LIMIT:
-                if retries > 0:
-                    print("[Downloader] Incomplete image download, retrying after sleep...")
-                    time.sleep(RETRY_DELAY)
-                dl_images.process()
-                retries += 1
+            #retries = 0
+            #while len(set(dl_images.output_files)) < len(image_download_batch) and retries < RETRY_LIMIT:
+            #    if retries > 0:
+            #        print("[Downloader] Incomplete image download, retrying after sleep...")
+            #        time.sleep(RETRY_DELAY)
+            #    dl_images.process()
+            #    retries += 1
 
             while (len(glob.glob("./*/*.jpg"))-len(glob.glob("./*/*.xml"))) >= MAX_QUEUE_SIZE:
                 print("Waiting for some queue space")
