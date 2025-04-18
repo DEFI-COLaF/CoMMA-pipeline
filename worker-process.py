@@ -7,10 +7,8 @@ from rtk.task import KrakenRecognizerCommand
 import shutil
 import random
 import glob
-import os
 import lxml.etree as et
 import json
-import tqdm
 
 
 WATCH_DIR = "."
@@ -168,6 +166,7 @@ def find_manifest_dirs(root_dir: str) -> List[str]:
 def watch_directory():
 
     def get_unprocessed():
+        print("Checking...")
         jpgs = set()
         for directory in find_manifest_dirs("."):
             jpgs = jpgs.union(
