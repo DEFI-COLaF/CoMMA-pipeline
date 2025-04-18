@@ -38,12 +38,17 @@ class Manifest:
             d = json.load(f)
         return cls(**d)
 
-    def is_complete(self) -> bool:
+    def is_complete(self, checking_function: Optional[Callable[[str], None]] = None, log: bool = False) -> bool:
+        if checking_function is None:
+            checking_function = lambda x: utils.check_parsable(x) and utils.check_content(x, ratio=1)
+
         done = [
             file
             for file in glob.glob(str(Path(self.directory) / "*.xml"))
-            if utils.check_parsable(file) and utils.check_content(file, ratio=1)
+            if checking_function(file)
         ]
+        if log:
+            print(f"{self.manifest_id}: {len(done)} imgs / {self.total_images} jpgs")
         return len(done) == self.total_images
 
 

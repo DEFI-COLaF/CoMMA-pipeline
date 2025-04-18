@@ -35,18 +35,15 @@ def archive(directories_with_processed_files: List[Path], manifests: Dict[Path, 
     for directory in directories_with_processed_files:
         manifest: Optional[Manifest] = manifests.get(directory)
         if not manifest:
-            print("Houston we got a problem")
+            print(f"Houston we got a problem for {manifest}")
         else:
-            if manifest.is_complete():
+            if manifest.is_complete(checking_function=custom_check_util, log=True):
                 print(f"[Processor] Archiving complete manifest {manifest.directory}")
                 paths = list([Path(directory) / Path(image).with_suffix(".xml") for image in manifest.image_order])
+                print(map(str, paths))
+
                 if not paths:
                     continue
-                for xml_file in tqdm.tqdm(paths, desc="Checking that all files are done"):
-                    if not custom_check_util(str(xml_file)):
-                        print(f"{xml_file} is not finished processing.")
-                        continue
-
 
                 def _get_order(_path: Path) -> int:
                     return manifest.image_order.index(_path.with_suffix("").name)
@@ -164,7 +161,7 @@ def watch_directory():
             )
             # Check all xml without jpgs
             for file in sorted(glob.glob(f"./{directory}/*.xml")):
-                if utils.check_parsable(file) == False or custom_check_util(file) == False:
+                if not custom_check_util(file):
                     jpgs.add(Path(file).with_suffix(".jpg"))
         if len(jpgs) >= TARGET_COUNT:
             process_worker(list(jpgs))
