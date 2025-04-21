@@ -3,20 +3,24 @@ from pathlib import Path
 from typing import Set, List, Dict, Optional
 from rtk_adapt import YaltoCommand, Manifest, create_tar_gz_archives
 from rtk import utils
-from rtk.task import KrakenRecognizerCommand
+from rtk.task import KrakenRecognizerCommand, KrakenAltoCleanUpCommand
 import shutil
 import random
 import glob
 import lxml.etree as et
 import json
+from datetime import datetime
 
+def print_current_time():
+    """Prints the current time in HH:MM:SS format."""
+    now = datetime.now()
+    print(now.strftime("%H:%M:%S"))
 
 WATCH_DIR = "."
-YOLO_BATCH_SIZE: int = 32
+YOLO_BATCH_SIZE: int = 1
 KRAKEN_BATCH_SIZE: int = 24
 TARGET_COUNT: int = 64 # 4 * YOLO_BATCH_SIZE # Number of jpg to reach to run produce
 TIME_BETWEEN_CHECK: int = 10
-
 CACHED_DONE = {}
 CACHED_PARSABLE = {}
 
@@ -47,6 +51,7 @@ def custom_ocr_check(filepath: str, ratio: int = 1) -> bool:
 
 
 def archive(directories_with_processed_files: List[Path], manifests: Dict[Path, Manifest]):
+    print_current_time()
     print(f"Checking {len(directories_with_processed_files)} for archival process")
     for directory in directories_with_processed_files:
         manifest: Optional[Manifest] = manifests.get(directory)
@@ -97,6 +102,8 @@ def clean_up_archives():
 
 # Consumes batches of images from queue, performs segmentation, OCR, and GZIP when ready
 def process_worker(batch: List[Path]):
+    print("Processing")
+    print_current_time()
     # Deduplicate paths and reconstruct manifest mapping
     images = [str(item) for item in batch]
     manifests: Dict[Path, Manifest] = {}
@@ -116,6 +123,11 @@ def process_worker(batch: List[Path]):
 
     files = [] + xmls.output_files
     random.shuffle(files)
+
+
+    cleanup = KrakenAltoCleanUpCommand(files)
+    cleanup.process()
+
     print("[Processor] OCR with Kraken")
     kraken = KrakenRecognizerCommand(
         xmls.output_files,
@@ -123,14 +135,18 @@ def process_worker(batch: List[Path]):
         device="cpu",
         template="template.xml",
         model="catmus-medieval-1.6.0.mlmodel",
-        raise_on_error=False,
+        raise_on_error=True,
         multiprocess=KRAKEN_BATCH_SIZE,
         check_content=True,
         custom_check_function=custom_ocr_check,
         other_options=" --no-subline-segmentation ",
-        max_time_per_op=240  #
+        max_time_per_op=30  #
     )
     kraken.process()
+
+    cleanup = KrakenAltoCleanUpCommand(kraken.output_files)
+    cleanup.process()
+
 
     # Register all successful results in the tracker
     directories_with_processed_files = list(set([
@@ -166,7 +182,8 @@ def find_manifest_dirs(root_dir: str) -> List[str]:
 def watch_directory():
 
     def get_unprocessed():
-        print("Checking...")
+        print("Checking files for processing...")
+        print_current_time()
         jpgs = set()
         for directory in find_manifest_dirs("."):
             jpgs = jpgs.union(
@@ -198,5 +215,6 @@ def watch_directory():
 # Run the producer (watcher)
 if __name__ == "__main__":
     print("Hello, let's go")
+    print_current_time()
     clean_up_archives()
     watch_directory()
