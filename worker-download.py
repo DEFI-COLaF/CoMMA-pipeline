@@ -137,6 +137,16 @@ def download_worker(tracker: ManifestTracker, manifest_urls: List[str]):
                 print("Waiting for some queue space")
                 time.sleep(SLEEP_TIME_BETWEEN_POOL_CHECK)
 
+        for manifest_uri in tracker.manifest_to_directory:
+            m = Manifest(
+                manifest_id=manifest_uri,
+                directory=tracker.manifest_to_directory[manifest_uri],
+                image_order=tracker.order[manifest_uri],
+                total_images=tracker.expected[manifest_uri]
+            )
+            if len(m.image_order) > 1 and len(m.found_images()) == 0:
+                tracker.mark_done(manifest_uri)
+                print(f"Giving up on {manifest_uri}")
     with open(".totally_done", "w") as f:
         f.write("")
 
