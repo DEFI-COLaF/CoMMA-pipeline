@@ -138,6 +138,8 @@ def download_worker(tracker: ManifestTracker, manifest_urls: List[str]):
                 time.sleep(SLEEP_TIME_BETWEEN_POOL_CHECK)
 
         for manifest_uri in batch:
+            if manifest_uri not in batch:
+                print(f"{manifest_uri} not found ?")
             m = Manifest(
                 manifest_id=manifest_uri,
                 directory=tracker.manifest_to_directory[manifest_uri],
