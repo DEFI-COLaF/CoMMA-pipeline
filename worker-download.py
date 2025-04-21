@@ -138,8 +138,9 @@ def download_worker(tracker: ManifestTracker, manifest_urls: List[str]):
                 time.sleep(SLEEP_TIME_BETWEEN_POOL_CHECK)
 
         for manifest_uri in batch:
-            if manifest_uri not in batch:
+            if manifest_uri not in tracker.manifest_to_directory:
                 print(f"{manifest_uri} not found ?")
+                continue
             m = Manifest(
                 manifest_id=manifest_uri,
                 directory=tracker.manifest_to_directory[manifest_uri],
@@ -150,6 +151,10 @@ def download_worker(tracker: ManifestTracker, manifest_urls: List[str]):
                 tracker.mark_done(manifest_uri)
                 print(f"Giving up on {manifest_uri} ({len(m.found_images())}/{len(m.image_order)}")
                 print(f"\tDirectory is {m.directory}")
+            else:
+                print(f"MANIFEST {manifest_uri} ==> ({len(m.found_images())}/{len(m.image_order)}")
+                print(f"\tDirectory is {m.directory}")
+
     with open(".totally_done", "w") as f:
         f.write("")
 
