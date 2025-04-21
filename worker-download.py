@@ -122,7 +122,7 @@ def download_worker(tracker: ManifestTracker, manifest_urls: List[str]):
                 retries=RETRY_LIMIT,
                 time_between_retries=RETRY_DELAY,
                 multiprocess=DOWNLOAD_BATCH_SIZE,
-                #downstream_check=DownloadIIIFImageTask.check_downstream_task("xml", utils.check_parsable)
+                downstream_check=DownloadIIIFImageTask.check_downstream_task("xml", utils.check_parsable)
             )
             dl_images.process()
             #retries = 0
@@ -137,7 +137,7 @@ def download_worker(tracker: ManifestTracker, manifest_urls: List[str]):
                 print("Waiting for some queue space")
                 time.sleep(SLEEP_TIME_BETWEEN_POOL_CHECK)
 
-        for manifest_uri in tracker.manifest_to_directory:
+        for manifest_uri in batch:
             m = Manifest(
                 manifest_id=manifest_uri,
                 directory=tracker.manifest_to_directory[manifest_uri],
@@ -146,7 +146,8 @@ def download_worker(tracker: ManifestTracker, manifest_urls: List[str]):
             )
             if len(m.image_order) > 1 and len(m.found_images()) == 0:
                 tracker.mark_done(manifest_uri)
-                print(f"Giving up on {manifest_uri}")
+                print(f"Giving up on {manifest_uri} ({len(m.found_images())}/{len(m.image_order)}")
+                print(f"\tDirectory is {m.directory}")
     with open(".totally_done", "w") as f:
         f.write("")
 
