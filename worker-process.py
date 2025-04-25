@@ -131,15 +131,18 @@ def process_worker(batch: List[Path]):
     files = [] + xmls.output_files
     random.shuffle(files)
     files = [f for f in files if custom_layout_check(f)]
-    print(f"{len(files)/len(xmls.output_files)*100:.2}% have correct XML. Filtered the wrong ones")
+    print(f"{len(files)}/{len(xmls.output_files)} have correct XML. Filtered the wrong ones")
 
 
     cleanup = KrakenAltoCleanUpCommand(files)
     cleanup.process()
 
+    files = [f for f in list(cleanup.output_files) if custom_layout_check(f)]
+    print(f"{len(files)}/{len(xmls.output_files)} have correct XML. Filtered the wrong ones")
+
     print("[Processor] OCR with Kraken")
     kraken = KrakenRecognizerCommand(
-        xmls.output_files,
+        files,
         binary="kraken",
         device="cpu",
         template="template.xml",
