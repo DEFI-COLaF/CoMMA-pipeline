@@ -2,6 +2,7 @@ import os.path
 import time
 from pathlib import Path
 from typing import Set, List, Dict, Optional
+from PIL import Image
 from rtk_adapt import YaltoCommand, Manifest, create_tar_gz_archives
 from rtk import utils
 from rtk.task import KrakenRecognizerCommand, KrakenAltoCleanUpCommand
@@ -24,6 +25,14 @@ TARGET_COUNT: int = 64 # 4 * YOLO_BATCH_SIZE # Number of jpg to reach to run pro
 TIME_BETWEEN_CHECK: int = 10
 CACHED_DONE = {}
 CACHED_PARSABLE = {}
+
+
+def check_image_file(filepath: Path) -> bool:
+    try:
+        Image.open(filepath).size
+    except Exception:
+        return False
+    return True
 
 
 def custom_layout_check(filepath) -> bool:
@@ -212,7 +221,9 @@ def watch_directory():
             for file in sorted(glob.glob(f"./{directory}/*.xml")):
                 # If OCR was not done, it means it needs to be done :)
                 if not custom_ocr_check(file):
-                    jpgs.add(Path(file).with_suffix(".jpg"))
+                    if os.path.exists(Path(file).with_suffix(".jpg")):
+                        jpgs.add(Path(file).with_suffix(".jpg"))
+        jpgs = {j for j in jpgs if check_image_file(j)}
         if len(jpgs) >= TARGET_COUNT:
             process_worker(list(jpgs))
             return True
