@@ -1,3 +1,4 @@
+import os.path
 import time
 from pathlib import Path
 from typing import Set, List, Dict, Optional
@@ -133,12 +134,14 @@ def process_worker(batch: List[Path]):
     files = [f for f in files if custom_layout_check(f)]
     print(f"{len(files)}/{len(xmls.output_files)} have correct XML. Filtered the wrong ones")
 
-
     cleanup = KrakenAltoCleanUpCommand(files)
     cleanup.process()
 
     files = [f for f in list(cleanup.output_files) if custom_layout_check(f)]
     print(f"{len(files)}/{len(xmls.output_files)} have correct XML. Filtered the wrong ones")
+
+    files = [f for f in files if os.path.exists(f.replace(".xml", ".jpg"))]
+    print(f"{len(files)}/{len(xmls.output_files)} have their JPGs")
 
     print("[Processor] OCR with Kraken")
     kraken = KrakenRecognizerCommand(
