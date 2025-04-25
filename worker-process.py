@@ -130,6 +130,8 @@ def process_worker(batch: List[Path]):
 
     files = [] + xmls.output_files
     random.shuffle(files)
+    files = [f for f in files if custom_layout_check(f)]
+    print(f"{len(files)/len(xmls.output_files)*100:.2}% have correct XML. Filtered the wrong ones")
 
 
     cleanup = KrakenAltoCleanUpCommand(files)
