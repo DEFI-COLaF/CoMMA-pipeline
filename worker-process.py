@@ -111,6 +111,9 @@ def process_worker(batch: List[Path]):
         if image.parent not in manifests:
             manifests[image.parent] = Manifest.from_json(str(image.parent / ".manifest.json"))
 
+
+    random.shuffle(images)
+
     print("[Processor] Segmenting with YALTAi")
     xmls = YaltoCommand(
         images,
@@ -119,7 +122,11 @@ def process_worker(batch: List[Path]):
         batch_size=YOLO_BATCH_SIZE,
         check_content=custom_layout_check
     )
-    xmls.process()
+    try:
+        xmls.process()
+    except Exception as E:
+        print(E)
+
 
     files = [] + xmls.output_files
     random.shuffle(files)
