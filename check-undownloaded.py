@@ -17,7 +17,7 @@ dl_manifests = DownloadIIIFManifestTask(
 
 
 # [(Url, Target)]
-require_download: List[Tuple[str, str]] = []
+require_download: List[Tuple[str, str, str]] = []
 
 
 for file in glob.glob("./*/.manifest.json"):
@@ -32,10 +32,10 @@ for file in glob.glob("./*/.manifest.json"):
         data = dl_manifests.parse_cache(uri=manifest.manifest_id)
         for image_idx, image_name in missings:
             require_download.append(
-                (data[image_idx][0], f"{manifest.directory}/{image_name}.jpg")
+                (manifest.manifest_id, data[image_idx][0], f"{manifest.directory}/{image_name}.jpg")
             )
 
 with open("missing.csv", "w") as f:
-    w = csv.writer(f)
-    w.writerow(["URI", "Path"])
+    w = csv.writer(f, delimiter="\t")
+    w.writerow(["Manifest", "URI", "Path"])
     w.writerows(require_download)
