@@ -114,6 +114,10 @@ def download_worker(tracker: ManifestTracker, manifest_urls: List[str]):
         for i in range(0, len(images_to_download), PROCESS_BATCH_SIZE):
             # We simplify the variable
             image_download_batch = images_to_download[i:i+PROCESS_BATCH_SIZE]
+            image_download_batch = [
+                (el[0].replace(".webp", ".jpg"), *el[1:])
+                for el in image_download_batch
+            ]
             print("[Downloader] Downloading images")
             dl_images = DownloadIIIFImageTask(
                 image_download_batch,
