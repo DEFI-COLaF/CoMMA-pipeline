@@ -28,7 +28,7 @@ for file in glob.glob("./*/.manifest.json"):
     for idx, image in enumerate(images):
         if f"{image}.jpg" not in existing_images:
             missings.append((idx, image))
-    if missings:
+    if missings and len(glob.glob(f"{manifest.directory}/*.xml")):
         data = dl_manifests.parse_cache(uri=manifest.manifest_id)
         for image_idx, image_name in missings:
             require_download.append(
