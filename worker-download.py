@@ -15,9 +15,9 @@ import cases
 # Constants
 DOWNLOAD_BATCH_SIZE = 15         # Number of manifests to download in parallel
 PROCESS_BATCH_SIZE = 1000        # Number of images to process per queue job
-RETRY_LIMIT = 1                  # How many times to retry a manifest
-RETRY_DELAY = 10                 # Seconds to wait before retrying a failed manifest
-MAX_QUEUE_SIZE = 1240*10          # Number of batch that we can keep without processing
+RETRY_LIMIT = 2                  # How many times to retry a manifest
+RETRY_DELAY = 60                 # Seconds to wait before retrying a failed manifest
+MAX_QUEUE_SIZE = 1240*20          # Number of batch that we can keep without processing
 SLEEP_TIME_BETWEEN_POOL_CHECK = 20
 
 # Represents a successfully downloaded image and which manifest it belongs to
