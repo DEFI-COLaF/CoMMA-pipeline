@@ -150,7 +150,7 @@ class YaltoCommand(Task):
 
             try:
                 for line in iter(proc.stdout.readline, ""):
-                    print(line)
+                    #print(line)
                     for element in self.pbar_parsing(line):
                         out.append(element)
                         pbar.update(1)
