@@ -36,24 +36,24 @@ def check_image_file(filepath: Path) -> bool:
 
 
 def custom_layout_check(filepath) -> bool:
-    if CACHED_PARSABLE.get(filepath):
-        return True
+    #if CACHED_PARSABLE.get(filepath):
+    #    return True
     if utils.check_parsable(filepath):
-        CACHED_PARSABLE[filepath] = True
+        #CACHED_PARSABLE[filepath] = True
         return True
     return False
 
 def custom_ocr_check(filepath: str, ratio: int = 1) -> bool:
-    if CACHED_DONE.get(filepath):
-        return True
+    #if CACHED_DONE.get(filepath):
+        #return True
     if utils.check_content(filepath, ratio):
-        CACHED_DONE[filepath] = True
+        #CACHED_DONE[filepath] = True
         return True
     try:
         xml = et.parse(filepath)
         for element in xml.xpath("//a:processingCategory", namespaces={"a": "http://www.loc.gov/standards/alto/ns-v4#"}):
             if element.text.strip() == "contentGeneration":
-                CACHED_DONE[filepath] = True
+                #CACHED_DONE[filepath] = True
                 return True
     except Exception:
         return False
@@ -160,6 +160,7 @@ def process_worker(batch: List[Path]):
         template="template.xml",
         model="catmus-medieval-1.6.0.mlmodel",
         raise_on_error=True,
+        allow_failure=True,
         multiprocess=KRAKEN_BATCH_SIZE,
         check_content=True,
         custom_check_function=custom_ocr_check,
