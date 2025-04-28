@@ -111,74 +111,80 @@ def clean_up_archives():
 
 
 # Consumes batches of images from queue, performs segmentation, OCR, and GZIP when ready
-def process_worker(batch: List[Path]):
+def process_worker(batches: List[Path]):
     print("Processing")
     print_current_time()
     # Deduplicate paths and reconstruct manifest mapping
-    images = [str(item) for item in batch]
-    manifests: Dict[Path, Manifest] = {}
-    for image in batch:
-        if image.parent not in manifests:
-            manifests[image.parent] = Manifest.from_json(str(image.parent / ".manifest.json"))
+
+    def split_into_batches(lst: List[Path], n: int) -> List[List[Path]]:
+        """Split a list into batches of size n."""
+        return [lst[i:i + n] for i in range(0, len(lst), n)]
+
+    for batch in split_into_batches(batches, KRAKEN_BATCH_SIZE*10):
+        images = [str(item) for item in batch]
+        manifests: Dict[Path, Manifest] = {}
+        for image in batch:
+            if image.parent not in manifests:
+                manifests[image.parent] = Manifest.from_json(str(image.parent / ".manifest.json"))
 
 
-    random.shuffle(images)
+        random.shuffle(images)
 
-    print("[Processor] Segmenting with YALTAi")
-    xmls = YaltoCommand(
-        images,
-        binary="yolalto",
-        model_path="medieval-yolov11x.pt",
-        batch_size=YOLO_BATCH_SIZE,
-        check_content=custom_layout_check
-    )
-    try:
-        xmls.process()
-    except Exception as E:
-        print(E)
-
-
-    files = [] + xmls.output_files
-    random.shuffle(files)
-    files = [f for f in files if custom_layout_check(f)]
-    print(f"{len(files)}/{len(xmls.output_files)} have correct XML. Filtered the wrong ones")
-
-    cleanup = KrakenAltoCleanUpCommand(files)
-    cleanup.process()
-
-    files = [f for f in list(cleanup.output_files) if custom_layout_check(f)]
-    print(f"{len(files)}/{len(xmls.output_files)} have correct XML. Filtered the wrong ones")
-
-    files = [f for f in files if os.path.exists(f.replace(".xml", ".jpg"))]
-    print(f"{len(files)}/{len(xmls.output_files)} have their JPGs")
-
-    print("[Processor] OCR with Kraken")
-    kraken = KrakenRecognizerCommand(
-        files,
-        binary="kraken",
-        device="cpu",
-        template="template.xml",
-        model="catmus-medieval-1.6.0.mlmodel",
-        raise_on_error=True,
-        allow_failure=True,
-        multiprocess=KRAKEN_BATCH_SIZE,
-        check_content=True,
-        custom_check_function=custom_ocr_check,
-        other_options=" --no-subline-segmentation ",
-        max_time_per_op=30  #
-    )
-    kraken.process()
-
-    cleanup = KrakenAltoCleanUpCommand(kraken.output_files)
-    cleanup.process()
+        print("[Processor] Segmenting with YALTAi")
+        xmls = YaltoCommand(
+            images,
+            binary="yolalto",
+            model_path="medieval-yolov11x.pt",
+            batch_size=YOLO_BATCH_SIZE,
+            check_content=custom_layout_check
+        )
+        try:
+            xmls.process()
+        except Exception as E:
+            print(E)
 
 
-    # Register all successful results in the tracker
-    directories_with_processed_files = list(set([
-        Path(xml_path).parent
-        for xml_path in kraken.output_files
-    ]))
-    archive(directories_with_processed_files, manifests)
+        files = [] + xmls.output_files
+        random.shuffle(files)
+        files = [f for f in files if custom_layout_check(f)]
+        print(f"{len(files)}/{len(xmls.output_files)} have correct XML. Filtered the wrong ones")
+
+        cleanup = KrakenAltoCleanUpCommand(files)
+        cleanup.process()
+
+        files = [f for f in list(cleanup.output_files) if custom_layout_check(f)]
+        print(f"{len(files)}/{len(xmls.output_files)} have correct XML. Filtered the wrong ones")
+
+        files = [f for f in files if os.path.exists(f.replace(".xml", ".jpg"))]
+        print(f"{len(files)}/{len(xmls.output_files)} have their JPGs")
+
+        print("[Processor] OCR with Kraken")
+        kraken = KrakenRecognizerCommand(
+            files,
+            binary="kraken",
+            device="cpu",
+            template="template.xml",
+            model="catmus-medieval-1.6.0.mlmodel",
+            raise_on_error=True,
+            allow_failure=True,
+            multiprocess=KRAKEN_BATCH_SIZE,
+            check_content=True,
+            custom_check_function=custom_ocr_check,
+            other_options=" --no-subline-segmentation ",
+            max_time_per_op=30  #
+        )
+        kraken.process()
+
+        cleanup = KrakenAltoCleanUpCommand(kraken.output_files)
+        cleanup.process()
+
+
+        # Register all successful results in the tracker
+        directories_with_processed_files = list(set([
+            Path(xml_path).parent
+            for xml_path in kraken.output_files
+        ]))
+        archive(directories_with_processed_files, manifests)
 
 
 def find_manifest_dirs(root_dir: str) -> List[str]:
