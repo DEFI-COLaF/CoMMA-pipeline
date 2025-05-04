@@ -11,9 +11,10 @@ from rtk.task import DownloadIIIFImageTask, DownloadIIIFManifestTask
 from rtk import utils
 from rtk_adapt import Manifest
 import cases
+import datetime
 
 # Constants
-DOWNLOAD_BATCH_SIZE = 15         # Number of manifests to download in parallel
+DOWNLOAD_BATCH_SIZE = 5         # Number of manifests to download in parallel
 PROCESS_BATCH_SIZE = 1000        # Number of images to process per queue job
 RETRY_LIMIT = 2                  # How many times to retry a manifest
 RETRY_DELAY = 60                 # Seconds to wait before retrying a failed manifest
@@ -77,6 +78,7 @@ def download_worker(tracker: ManifestTracker, manifest_urls: List[str]):
 
     for batch in manifest_batches:
         print("[Downloader] Downloading manifests")
+        print(datetime.datetime.now())
         dl_manifests = DownloadIIIFManifestTask(
             batch,
             output_directory="output",
@@ -119,6 +121,7 @@ def download_worker(tracker: ManifestTracker, manifest_urls: List[str]):
                 for el in image_download_batch
             ]
             print("[Downloader] Downloading images")
+            print(datetime.datetime.now())
             dl_images = DownloadIIIFImageTask(
                 image_download_batch,
                 max_height=2500,
