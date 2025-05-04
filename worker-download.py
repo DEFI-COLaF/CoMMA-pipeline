@@ -11,6 +11,9 @@ from rtk.task import DownloadIIIFImageTask, DownloadIIIFManifestTask
 from rtk import utils
 from rtk_adapt import Manifest
 import cases
+from urllib.parse import urlparse
+from collections import deque
+
 import datetime
 
 # Constants
@@ -166,17 +169,44 @@ def download_worker(tracker: ManifestTracker, manifest_urls: List[str]):
         f.write("")
 
 
+def alternate_by_domain(url_series: pd.Series) -> pd.Series:
+    # Extract domain names
+    domains = url_series.apply(lambda u: urlparse(u).netloc)
+
+    domain_counts = domains.value_counts(normalize=True) * 100
+    print("Domain ratios (%):")
+    for domain, ratio in domain_counts.items():
+        print(f"  {domain}: {ratio:.2f}%")
+
+    # Group URLs by domain, preserving order
+    domain_groups = defaultdict(deque)
+    for url, domain in zip(url_series, domains):
+        domain_groups[domain].append(url)
+
+    # Alternate between domains
+    output = []
+    domain_keys = list(domain_groups.keys())
+    while any(domain_groups.values()):
+        for domain in domain_keys:
+            if domain_groups[domain]:
+                output.append(domain_groups[domain].popleft())
+
+    return pd.Series(output, name="manifest_url")
+
+
 # Entrypoint
 if __name__ == "__main__":
     tracker = ManifestTracker()
 
     # Load manifests and filter out already completed ones
-    df = pd.read_csv("extraction_biblissima_20250410.csv", delimiter=";")["manifest_url"].tolist()
+    df = pd.read_csv("extraction_biblissima_20250410.csv", delimiter=";")["manifest_url"]
+    df = alternate_by_domain(df).tolist()
     df = [
         uri.replace("https://gallica.bnf.fr/iiif/ark:/12148/", "https://openapi.bnf.fr/iiif/presentation/v3/ark:/12148/")
         for uri in df
     ]
     df = [uri for uri in df if uri not in tracker.done]
+    # print(df)
     # Launch producer and consumer
     print("[Main] Starting downloader")
     download_worker(tracker, df)
