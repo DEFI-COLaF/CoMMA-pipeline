@@ -120,6 +120,9 @@ def process_worker(batches: List[Path]):
         """Split a list into batches of size n."""
         return [lst[i:i + n] for i in range(0, len(lst), n)]
 
+    batches = sorted(batches)
+    print(f"{len(batches)} files to process")
+
     for batch in split_into_batches(batches, KRAKEN_BATCH_SIZE*10):
         images = [str(item) for item in batch]
         manifests: Dict[Path, Manifest] = {}
