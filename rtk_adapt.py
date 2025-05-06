@@ -51,7 +51,7 @@ class Manifest:
             if checking_function(file)
         ]
         if log:
-            print(f"{self.manifest_id}: {len(done)} imgs / {self.total_images} jpgs")
+            print(f"{self.directory}: {len(done)} imgs / {self.total_images} jpgs [{self.manifest_id}]")
 
         return len(done) == self.total_images
 
