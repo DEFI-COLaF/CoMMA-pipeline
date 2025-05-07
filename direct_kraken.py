@@ -43,7 +43,7 @@ def ocr(
             bounds = doc.to_container()
         except Exception as E:
             print("[ERROR] Kraken Parsing Issue")
-            print(E)
+            print(f"File {input_file}: {E}")
             return None
 
         try:
@@ -51,8 +51,31 @@ def ocr(
             imsize = im.size
         except IOError as E:
             print("[ERROR] Kraken Pillow Image Issue")
-            print(E)
+            print(f"File {input_file}: {E}")
             return None
+
+        try:
+            # Ensure correct bounds
+            lines = bounds.lines
+            def minmax(x: int, threshold: int):
+                return int(min(max(x, 0), threshold))
+            def normalize(l: List[Tuple[int, int]]) -> List[Tuple[int, int]]:
+                return list([
+                    (
+                        minmax(x, imsize[0]),
+                        minmax(y, imsize[1])
+                    )
+                    for x, y in l
+                ])
+
+            for line in lines:
+                line.boundary = normalize(line.boundary)
+                line.baseline = normalize(line.baseline)
+        except Exception as E:
+            print("[ERROR] Kraken normalizing lines")
+            print(f"File {input_file}: {E}")
+            return None
+
 
         try:
             preds = []
@@ -64,7 +87,7 @@ def ocr(
             results = dataclasses.replace(it.bounds, lines=preds, imagename=doc.imagename)
         except Exception as E:
             print("[ERROR] Kraken Pred Issue")
-            print(E)
+            print(f"File {input_file}: {E}")
             return None
 
         try:
@@ -84,7 +107,7 @@ def ocr(
                 return input_file
         except Exception as E:
             print("[ERROR] Kraken Serialization Issue")
-            print(E)
+            print(f"File {input_file}: {E}")
             return None
 
 
