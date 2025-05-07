@@ -173,10 +173,10 @@ def process_worker(batches: List[Path]):
             device="cpu",
             template="template.xml",
             model="catmus-medieval-1.6.0.mlmodel",
-            multiprocess=KRAKEN_BATCH_SIZE,
+            workers=KRAKEN_BATCH_SIZE,
             check_content=custom_ocr_check_with_inp,
             subline_segmentation=False,
-            max_time_per_op=120  #
+            max_time_per_op=600  #
         )
         kraken.process()
 

@@ -2,9 +2,10 @@ import uuid
 import os
 import dataclasses
 from functools import partial
+import time
 
 from threadpoolctl import threadpool_limits
-from concurrent.futures.thread import ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, as_completed, ThreadPoolExecutor
 from typing import List, Optional, Iterator, Tuple, Callable, Union
 
 from kraken import rpred
@@ -14,20 +15,20 @@ from kraken import serialization
 from kraken.lib.xml import XMLPage
 from tqdm import tqdm
 from PIL import Image
-from rtk import utils
 from rtk.task import Task, InputType, InputListType, _sbmsg
 
+
 def ocr(
-        files: List[str],
+        input_file: str,
         model: str,
         device: str = "cpu",
-        pbar: Optional[tqdm] = None,
         text_direction: str = "L",
         pad: int = 16,
         custom_template: bool = False,
         template: str = "alto",
         sub_line_segmentation: bool = False
-) -> Iterator[str]:
+) -> Optional[str]:
+
     with threadpool_limits(limits=1):
         nm = models.load_any(model, device=device)
         step = ProcessingStep(id=f'_{uuid.uuid4()}',
@@ -36,59 +37,55 @@ def ocr(
                               settings={
                                   'text_direction': text_direction, 'models': model, 'pad': 16, 'bidi_reordering': True
                               })
-        for inp in files:
-            try:
-                doc = XMLPage(inp)
-                bidi_reordering = doc.base_dir
-                bounds = doc.to_container()
-            except Exception as E:
-                print("[ERROR] Kraken Parsing Issue")
-                print(E)
-                continue
-            try:
-                im = Image.open(doc.imagename)
-                imsize = im.size
-            except IOError as E:
-                print("[ERROR] Kraken Pillow Image Issue")
-                print(E)
-                continue
+        try:
+            doc = XMLPage(input_file)
+            bidi_reordering = doc.base_dir
+            bounds = doc.to_container()
+        except Exception as E:
+            print("[ERROR] Kraken Parsing Issue")
+            print(E)
+            return None
 
-            try:
-                preds = []
-                it = rpred.rpred(
-                    nm, im, bounds, pad, bidi_reordering=bidi_reordering, no_legacy_polygons=False
-                )
-                for pred in it:
-                    preds.append(pred)
-                results = dataclasses.replace(it.bounds, lines=preds, imagename=doc.imagename)
-            except Exception as E:
-                print("[ERROR] Kraken Pred Issue")
-                print(E)
-                continue
+        try:
+            im = Image.open(doc.imagename)
+            imsize = im.size
+        except IOError as E:
+            print("[ERROR] Kraken Pillow Image Issue")
+            print(E)
+            return None
 
-            try:
-                with open(inp, "w") as fp:
-                    fp.write(
-                        serialization.serialize(
-                            results=results,
-                            image_size=imsize,
-                            writing_mode=text_direction,
-                            scripts=None,
-                            template=template,
-                            template_source='custom' if custom_template else 'native',
-                            processing_steps=[step],
-                            sub_line_segmentation=sub_line_segmentation
-                        )
+        try:
+            preds = []
+            it = rpred.rpred(
+                nm, im, bounds, pad, bidi_reordering=bidi_reordering, no_legacy_polygons=False
+            )
+            for pred in it:
+                preds.append(pred)
+            results = dataclasses.replace(it.bounds, lines=preds, imagename=doc.imagename)
+        except Exception as E:
+            print("[ERROR] Kraken Pred Issue")
+            print(E)
+            return None
+
+        try:
+            with open(input_file, "w") as fp:
+                fp.write(
+                    serialization.serialize(
+                        results=results,
+                        image_size=imsize,
+                        writing_mode=text_direction,
+                        scripts=None,
+                        template=template,
+                        template_source='custom' if custom_template else 'native',
+                        processing_steps=[step],
+                        sub_line_segmentation=sub_line_segmentation
                     )
-            except Exception as E:
-                print("[ERROR] Kraken Serialization Issue")
-                print(E)
-                continue
-
-            pbar.update(1)
-            yield inp
-
-
+                )
+                return input_file
+        except Exception as E:
+            print("[ERROR] Kraken Serialization Issue")
+            print(E)
+            return None
 
 
 class KrakenDirectTask(Task):
@@ -155,19 +152,27 @@ class KrakenDirectTask(Task):
         """ Use parallel """
         # Group inputs into the number of workers
         total_texts = len(inputs)
-        inputs = utils.split_batches(inputs, self.workers)
-        tp = ThreadPoolExecutor(len([batches for batches in inputs if len(batches)]))
         bar = tqdm(desc=_sbmsg(f"Processing {self.desc} command"), total=total_texts)
+
         ocr_fn = partial(
             ocr,
-            model=self.model_path, pbar=bar,
+            model=self.model_path,
             template=self.template, custom_template=self.template not in {"alto", "pagexml"},
             sub_line_segmentation=self.subline_segmentation
         )
-        for gen in tp.map(ocr_fn, inputs, timeout=max([len(b) for b in inputs])*self.max_time_per_op):
-            for elem in gen:
-                if isinstance(elem, str):
-                    self._output_files.append(elem)
+        if self.workers <= 1:
+            print("Warning: Workers set to 1. This won't enable parallelism.")
+        with ProcessPoolExecutor(max_workers=self.workers) as pool:
+            futures = {pool.submit(ocr_fn, inp) for inp in inputs}
+
+            for future in as_completed(futures):
+                try:
+                    result = future.result(timeout=self.max_time_per_op*3)
+                    if isinstance(result, str):
+                        self._output_files.append(result)
+                        bar.update(1)
+                except Exception as e:
+                    print(f"Task failed: {e}")
         bar.close()
         if len(self._output_files) == len(self.input_files):
             return True
