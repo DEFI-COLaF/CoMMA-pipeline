@@ -1,11 +1,10 @@
 import os.path
 import time
 from pathlib import Path
-from typing import Set, List, Dict, Optional
+from typing import Set, List, Dict, Optional, Tuple
 from PIL import Image
-from rtk_adapt import YaltoCommand, Manifest, create_tar_gz_archives
 from rtk import utils
-from rtk.task import KrakenRecognizerCommand, KrakenAltoCleanUpCommand
+from rtk.task import KrakenAltoCleanUpCommand
 import shutil
 import random
 import glob
@@ -13,6 +12,8 @@ import lxml.etree as et
 import json
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
+from rtk_adapt import YaltoCommand, Manifest, create_tar_gz_archives
+from direct_kraken import KrakenDirectTask
 
 
 def filter_valid_jpgs(images: Set[str], max_workers: int = 8) -> Set[str]:
@@ -44,28 +45,25 @@ def check_image_file(filepath: Path) -> bool:
 
 
 def custom_layout_check(filepath) -> bool:
-    #if CACHED_PARSABLE.get(filepath):
-    #    return True
     if utils.check_parsable(filepath):
-        #CACHED_PARSABLE[filepath] = True
         return True
     return False
 
 def custom_ocr_check(filepath: str, ratio: int = 1) -> bool:
-    #if CACHED_DONE.get(filepath):
-        #return True
     if utils.check_content(filepath, ratio):
-        #CACHED_DONE[filepath] = True
         return True
     try:
         xml = et.parse(filepath)
         for element in xml.xpath("//a:processingCategory", namespaces={"a": "http://www.loc.gov/standards/alto/ns-v4#"}):
             if element.text.strip() == "contentGeneration":
-                #CACHED_DONE[filepath] = True
                 return True
     except Exception:
         return False
     return False
+
+
+def custom_ocr_check_with_inp(filepath: str, ratio: int = 1) -> Tuple[str, bool]:
+    return filepath, custom_ocr_check(filepath, ratio)
 
 
 def archive(directories_with_processed_files: List[Path], manifests: Dict[Path, Manifest]):
@@ -170,19 +168,15 @@ def process_worker(batches: List[Path]):
         print(f"{len(files)}/{len(xmls.output_files)} have their JPGs")
 
         print("[Processor] OCR with Kraken")
-        kraken = KrakenRecognizerCommand(
+        kraken = KrakenDirectTask(
             files,
-            binary="kraken",
             device="cpu",
             template="template.xml",
             model="catmus-medieval-1.6.0.mlmodel",
-            raise_on_error=True,
-            allow_failure=True,
             multiprocess=KRAKEN_BATCH_SIZE,
-            check_content=True,
-            custom_check_function=custom_ocr_check,
-            other_options=" --no-subline-segmentation ",
-            max_time_per_op=30  #
+            check_content=custom_ocr_check_with_inp,
+            subline_segmentation=False,
+            max_time_per_op=120  #
         )
         kraken.process()
 
