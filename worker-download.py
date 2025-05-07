@@ -1,4 +1,5 @@
 import asyncio
+import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -17,12 +18,13 @@ from collections import deque
 import datetime
 
 # Constants
-DOWNLOAD_BATCH_SIZE = 5         # Number of manifests to download in parallel
-PROCESS_BATCH_SIZE = 1000        # Number of images to process per queue job
-RETRY_LIMIT = 2                  # How many times to retry a manifest
-RETRY_DELAY = 60                 # Seconds to wait before retrying a failed manifest
-MAX_QUEUE_SIZE = 1240*40          # Number of batch that we can keep without processing
+DOWNLOAD_BATCH_SIZE = int(os.getenv("BATCH_SIZE", 5))   # Number of manifests to download in parallel
+PROCESS_BATCH_SIZE = 1000                               # Number of images to process per queue job
+RETRY_LIMIT = 2                                         # How many times to retry a manifest
+RETRY_DELAY = 60                                        # Seconds to wait before retrying a failed manifest
+MAX_QUEUE_SIZE = 1240*40                                # Number of batch that we can keep without processing
 SLEEP_TIME_BETWEEN_POOL_CHECK = 20
+
 
 # Represents a successfully downloaded image and which manifest it belongs to
 @dataclass

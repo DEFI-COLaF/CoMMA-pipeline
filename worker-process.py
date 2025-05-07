@@ -12,6 +12,14 @@ import glob
 import lxml.etree as et
 import json
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor
+
+
+def filter_valid_jpgs(images: Set[str], max_workers: int = 8) -> Set[str]:
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        results = executor.map(check_image_file, images)
+    return {j for j, is_valid in zip(images, results) if is_valid}
+
 
 def print_current_time():
     """Prints the current time in HH:MM:SS format."""
@@ -20,7 +28,7 @@ def print_current_time():
 
 WATCH_DIR = "."
 YOLO_BATCH_SIZE: int = 1
-KRAKEN_BATCH_SIZE: int = 40
+KRAKEN_BATCH_SIZE: int = int(os.getenv("KRAKEN_BATCH_SIZE", 40))
 TARGET_COUNT: int = 64 # 4 * YOLO_BATCH_SIZE # Number of jpg to reach to run produce
 TIME_BETWEEN_CHECK: int = 10
 CACHED_DONE = {}
@@ -233,7 +241,9 @@ def watch_directory():
                 if not custom_ocr_check(file):
                     if os.path.exists(Path(file).with_suffix(".jpg")):
                         jpgs.add(Path(file).with_suffix(".jpg"))
-        jpgs = {j for j in jpgs if check_image_file(j)}
+
+        jpgs = filter_valid_jpgs(jpgs, max_workers=KRAKEN_BATCH_SIZE)
+
         if len(jpgs) >= TARGET_COUNT:
             process_worker(list(jpgs))
             return True
