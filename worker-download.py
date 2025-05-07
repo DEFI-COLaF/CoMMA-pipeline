@@ -143,7 +143,7 @@ def download_worker(tracker: ManifestTracker, manifest_urls: List[str]):
             #    dl_images.process()
             #    retries += 1
 
-            while (len(glob.glob("./*/*.jpg"))-len(glob.glob("./*/*.xml"))) >= MAX_QUEUE_SIZE:
+            while (len(glob.glob("./*/*.jpg"))-len(glob.glob("./*/*.xml"))-1000) >= MAX_QUEUE_SIZE:
                 print("Waiting for some queue space")
                 time.sleep(SLEEP_TIME_BETWEEN_POOL_CHECK)
 
