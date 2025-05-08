@@ -34,7 +34,10 @@ TARGET_COUNT: int = 64 # 4 * YOLO_BATCH_SIZE # Number of jpg to reach to run pro
 TIME_BETWEEN_CHECK: int = 10
 CACHED_DONE = {}
 CACHED_PARSABLE = {}
+REVERSE: bool = bool(int(os.getenv("REVERSE", 0))) # REVERSE=1 start from the end
 
+if REVERSE:
+    print("GOING REVERSE")
 
 def check_image_file(filepath: Path) -> bool:
     try:
@@ -128,6 +131,8 @@ def process_worker(batches: List[Path]):
 
     batches = sorted(batches)
     print(f"{len(batches)} files to process")
+    if REVERSE:
+        batches = batches[::-1]
 
     for batch in split_into_batches(batches, KRAKEN_BATCH_SIZE*10):
         images = [str(item) for item in batch]
