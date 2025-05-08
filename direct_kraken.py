@@ -62,8 +62,8 @@ def ocr(
             def normalize(l: List[Tuple[int, int]]) -> List[Tuple[int, int]]:
                 return list([
                     (
-                        minmax(x, imsize[0]),
-                        minmax(y, imsize[1])
+                        minmax(x, imsize[0]-1),
+                        minmax(y, imsize[1]-1)
                     )
                     for x, y in l
                 ])
