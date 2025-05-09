@@ -140,11 +140,16 @@ def process_worker(batches: List[Path]):
         if not len(images):
             continue
         manifests: Dict[Path, Manifest] = {}
+        kept = []
         for image in batch:
             if image.parent not in manifests:
-                manifests[image.parent] = Manifest.from_json(str(image.parent / ".manifest.json"))
-
-
+                if os.path.exists(str(image.parent / ".manifest.json")):
+                    manifests[image.parent] = Manifest.from_json(str(image.parent / ".manifest.json"))
+                else:
+                    print(f"{image.parent} has no manifests...")
+                    continue
+            kept.append(image)
+        images = [str(img) for img in kept]
         random.shuffle(images)
 
         print("[Processor] Segmenting with YALTAi")
