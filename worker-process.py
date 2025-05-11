@@ -7,6 +7,7 @@ from rtk import utils
 from rtk.task import KrakenAltoCleanUpCommand
 import shutil
 import random
+import re
 import glob
 import lxml.etree as et
 import json
@@ -14,6 +15,15 @@ from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 from rtk_adapt import YaltoCommand, Manifest, create_tar_gz_archives
 from direct_kraken import KrakenDirectTask
+
+
+def naming_func(name: Path, base_dir: Path = Path("./targz")) -> Path:
+    match = re.match(r"^([^0-9]*)([0-9].*)$", str(name))
+    if match:
+        prefix = match.group(1)
+        return base_dir / prefix / name
+    else:
+        return base_dir
 
 
 def filter_valid_jpgs(images: Set[str], max_workers: int = 8) -> Set[str]:
@@ -87,7 +97,6 @@ def archive(directories_with_processed_files: List[Path], manifests: Dict[Path, 
                 def _get_order(_path: Path) -> int:
                     return manifest.image_order.index(_path.with_suffix("").name)
 
-
                 # Create ordering based on JPGs with same stem
                 ordering = sorted(paths, key=_get_order)
 
@@ -95,7 +104,7 @@ def archive(directories_with_processed_files: List[Path], manifests: Dict[Path, 
                 create_tar_gz_archives(
                     uri_to_files={manifest.manifest_id: paths},
                     ordering_dict={manifest.manifest_id: ordering},
-                    naming_func=lambda x: Path("targz") / (Path(manifest.directory).name + ".tar.gz")
+                    naming_func=lambda x: naming_func(Path(manifest.directory).name + ".tar.gz")
                 )
 
                 # Cleanup
