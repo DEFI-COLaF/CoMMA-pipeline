@@ -211,4 +211,7 @@ if __name__ == "__main__":
     # print(df)
     # Launch producer and consumer
     print("[Main] Starting downloader")
+    from hanging_threads import start_monitoring
+
+    monitoring_thread = start_monitoring(seconds_frozen=600, test_interval=1000)
     download_worker(tracker, df)

@@ -2,3 +2,4 @@ yolalto @ git+https://github.com/PonteIneptique/yolalto
 rtk @ git+https://github.com/PonteIneptique/rtk
 kraken @ git+https://github.com/PonteIneptique/kraken.git@feature/add-no-subline-segmentation
 #watchdog
+hanging_threads
