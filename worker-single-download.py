@@ -26,7 +26,7 @@ DOWNLOAD_BATCH_SIZE = int(os.getenv("BATCH_SIZE", 5))   # Number of manifests to
 PROCESS_BATCH_SIZE = 1000                               # Number of images to process per queue job
 RETRY_LIMIT = 2                                         # How many times to retry a manifest
 RETRY_DELAY = 60                                        # Seconds to wait before retrying a failed manifest
-MAX_QUEUE_SIZE = 1240*40                                # Number of batch that we can keep without processing
+MAX_QUEUE_SIZE = 1240*60                                # Number of batch that we can keep without processing
 SLEEP_TIME_BETWEEN_POOL_CHECK = 20
 MANIFEST_DIRECTORY: str = "output"
 
@@ -219,6 +219,12 @@ def single_download(tracker: ManifestTracker, manifests: List[str]):
             tracker.mark_done(manifest_uri)
         print(f"MANIFEST {manifest_uri} ==> ({len(m.found_images())}/{len(m.image_order)}")
         print(f"\t[Details] Directory is {m.directory}")
+
+        # Now check if pause !
+
+        while (len(glob.glob("./*/*.jpg")) - len(glob.glob("./*/*.xml")) - 1000) >= MAX_QUEUE_SIZE:
+            print("[WAIT] Waiting for some queue space")
+            time.sleep(SLEEP_TIME_BETWEEN_POOL_CHECK)
 
 if __name__ == "__main__":
     tracker = ManifestTracker()
