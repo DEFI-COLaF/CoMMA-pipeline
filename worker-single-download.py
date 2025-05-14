@@ -23,9 +23,9 @@ import cases
 
 # Constants
 DOWNLOAD_BATCH_SIZE = int(os.getenv("BATCH_SIZE", 5))   # Number of manifests to download in parallel
-PROCESS_BATCH_SIZE = 1000                               # Number of images to process per queue job
-RETRY_LIMIT = 2                                         # How many times to retry a manifest
-RETRY_DELAY = 60                                        # Seconds to wait before retrying a failed manifest
+RETRY_LIMIT = 1                                         # How many times to retry a manifest
+RETRY_NO_OPTIONS = 2
+RETRY_DELAY = 10                                        # Seconds to wait before retrying a failed manifest
 MAX_QUEUE_SIZE = 1240*60                                # Number of batch that we can keep without processing
 SLEEP_TIME_BETWEEN_POOL_CHECK = 20
 MANIFEST_DIRECTORY: str = "output"
@@ -206,7 +206,7 @@ def single_download(tracker: ManifestTracker, manifests: List[str]):
                 rename_image_download(image),
                 options = {"max_height": 2500},
                 retries = RETRY_LIMIT,
-                retries_no_options = RETRY_LIMIT,
+                retries_no_options = RETRY_NO_OPTIONS,
                 time_between_retries = RETRY_DELAY
             )
             if not result:
