@@ -18,12 +18,13 @@ from direct_kraken import KrakenDirectTask
 
 
 def naming_func(name: Path, base_dir: Path = Path("./targz")) -> Path:
-    match = re.match(r"^([^0-9]*)([0-9].*)$", str(name))
-    if match:
-        prefix = match.group(1)
-        return base_dir / prefix / name
-    else:
-        return base_dir
+    all_tars = set(Path().glob("targz-batch-*/*.tar.gz"))
+    name = Path(name).name  # ensure only filename part is used
+
+    batch_num = len(all_tars) // 1000
+    batch_folder = f"batch_{batch_num:03d}"
+
+    return base_dir / batch_folder / name
 
 
 def filter_valid_jpgs(images: Set[str], max_workers: int = 8) -> Set[str]:

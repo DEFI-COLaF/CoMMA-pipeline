@@ -197,6 +197,7 @@ def single_download(tracker: ManifestTracker, manifests: List[str]):
         print(f"\t[Details] {len(images_to_download)} images to process remaining")
         errors = 0
         aborted = False
+        failed = []
         for image in tqdm.tqdm(images_to_download):
             result = utils.download_iiif_image(
                 image[0],
@@ -208,9 +209,11 @@ def single_download(tracker: ManifestTracker, manifests: List[str]):
             )
             if not result:
                 errors += 1
+                m.add_errors(image[0])
                 # At a maximum of 10% of errors for 50 images or more, we forget about this manuscript
                 if len(images_details) > 50 and errors / (len(images_details)) > .1:
                     print("\t[ERROR] Too much errors (>10% of 4xx/5xx), moving to next manuscript.")
+                    m.to_json()
                     aborted = True
                     continue
         if aborted:
