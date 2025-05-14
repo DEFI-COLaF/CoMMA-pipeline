@@ -3,6 +3,7 @@ import csv
 import os
 import pandas as pd
 import cases
+import tqdm
 
 def file_exists_recursive(filename: str, root_dir: str = ".") -> bool:
     """
@@ -26,16 +27,16 @@ df = [
     for uri in df
 ]
 downloaded = []
-for uri in df:
+for uri in tqdm.tqdm(df):
     name = f"output/{cases.to_kebab(uri)}.csv"
     if os.path.exists(name):
         with open(name) as f:
             reader = csv.reader(f)
             data = next(iter(reader))[1]+".tar.gz"
             exists = file_exists_recursive(data)
-        print(uri, data, exists)
         if exists:
+            print(uri, data, exists)
             downloaded.append(uri)
 
-with open("done.txt") as f:
+with open("done.txt", "w") as f:
     f.write("\n".join(downloaded))
