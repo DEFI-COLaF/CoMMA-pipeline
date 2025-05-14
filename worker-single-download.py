@@ -40,17 +40,18 @@ class DownloadedImage:
 # Tracks manifest completeness and coordinates GZIP/completion logic
 class ManifestTracker:
     def __init__(self):
-        self.expected: Dict[str, int] = defaultdict(int)        # manifest_id → expected image count
-        self.completed: Dict[str, Set[Path]] = defaultdict(set)  # manifest_id → list of completed files
-        self.retry_counts: Dict[str, int] = defaultdict(int)    # manifest_id → how many times we’ve retried
-        self.done: Set[str] = set(self._load_done())            # already processed manifests (from done.txt)
+        self.expected: Dict[str, int] = defaultdict(int)               # manifest_id → expected image count
+        self.completed: Dict[str, Set[Path]] = defaultdict(set)        # manifest_id → list of completed files
+        self.retry_counts: Dict[str, int] = defaultdict(int)           # manifest_id → how many times we’ve retried
+        self.done: Set[str] = set(self._load("done.txt"))              # already processed manifests (from done.txt)
+        self.shamelist: Set[str] = set(self._load("shame-list.txt"))   # already processed manifests (from done.txt)
         self.manifest_to_directory: Dict[str, str] = {}
         self.directory_to_manifest: Dict[str, str] = {}
         self.order: Dict[str, List] = defaultdict(list)
 
-    def _load_done(self) -> List[str]:
+    def _load(self, file) -> List[str]:
         try:
-            with open("done.txt", "r") as f:
+            with open(file, "r") as f:
                 return f.read().split()
         except FileNotFoundError:
             return []
@@ -221,7 +222,7 @@ def single_download(tracker: ManifestTracker, manifests: List[str]):
         if aborted:
             with open("shame-list.txt", "a") as f:
                 f.writelines([str(manifest_uri)+"\n"])
-            tracker.mark_done(manifest_uri)
+            #tracker.mark_done(manifest_uri)
         print(f"MANIFEST {manifest_uri} ==> ({len(m.found_images())}/{len(m.image_order)}")
         print(f"\t[Details] Directory is {m.directory}")
 
@@ -241,7 +242,7 @@ if __name__ == "__main__":
         uri.replace("https://gallica.bnf.fr/iiif/ark:/12148/", "https://openapi.bnf.fr/iiif/presentation/v3/ark:/12148/")
         for uri in df
     ]
-    df = [uri for uri in df if uri not in tracker.done]
+    df = [uri for uri in df if uri not in tracker.done and uri not in tracker.shamelist]
 
     parser = argparse.ArgumentParser(description="Split work among workers.")
     parser.add_argument('--max', type=int, required=True, help='Total number of workers')
