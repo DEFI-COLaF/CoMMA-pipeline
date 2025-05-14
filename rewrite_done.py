@@ -35,8 +35,9 @@ for uri in tqdm.tqdm(df):
             data = next(iter(reader))[1]+".tar.gz"
             exists = file_exists_recursive(data)
         if exists:
-            print(uri, data, exists)
+            #print(uri, data, exists)
             downloaded.append(uri)
+
 
 with open("done.txt", "w") as f:
     f.write("\n".join(downloaded))

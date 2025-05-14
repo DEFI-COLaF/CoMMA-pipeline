@@ -109,6 +109,7 @@ def split_work(items: list, max_workers: int, index: int) -> list:
     """
     Splits the list of items so that each worker gets every `max_workers`-th item starting from its index.
     """
+    index -= 1
     if index < 0 or index >= max_workers:
         raise ValueError("index must be between 0 and max_workers - 1")
     return items[index::max_workers]
@@ -147,6 +148,7 @@ def single_download(tracker: ManifestTracker, manifests: List[str]):
                     print("\t[Details] Manifest undownloadable")
                     with open("shame-list.txt", "a") as f:
                         f.writelines([str(manifest_uri) + "\n"])
+                    continue
             except Exception as E:
                 print(f"\t[ERROR]{E}")
                 continue

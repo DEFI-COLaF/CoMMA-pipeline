@@ -1,7 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=bnf-download
 #SBATCH --output=logs/download_%A_%a.out
-#SBATCH --error=logs/download_%A_%a.err
 #SBATCH --array=1-7
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
