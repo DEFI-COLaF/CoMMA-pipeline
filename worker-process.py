@@ -18,7 +18,7 @@ from direct_kraken import KrakenDirectTask
 
 
 def naming_func(name: Path, base_dir: Path = Path("./targz")) -> Path:
-    all_tars = set(Path().glob("targz-batch-*/*.tar.gz"))
+    all_tars = set(Path().glob("targz/**/*.tar.gz"))
     name = Path(name).name  # ensure only filename part is used
 
     batch_num = len(all_tars) // 1000

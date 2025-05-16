@@ -252,7 +252,7 @@ def process_tar(file: str):
     if len(glob.glob(f"txt/*/{os.path.basename(file)}.txt")):
         return file, "success"
     try:
-        batch = f"batch-{len(glob.glob('txt/*')) // 1000:03d}"
+        batch = f"batch-{len(glob.glob('tei/**/*.xml')) // 1000:03d}"
         os.makedirs(f"tei/{batch}", exist_ok=True)
         os.makedirs(f"txt/{batch}", exist_ok=True)
 
