@@ -16,6 +16,21 @@ from kraken.lib.xml import XMLPage
 from tqdm import tqdm
 from PIL import Image
 from rtk.task import Task, InputType, InputListType, _sbmsg
+from rtk import utils
+import lxml.etree as et
+
+
+def custom_ocr_check(filepath: str, ratio: int = 1) -> bool:
+    if utils.check_content(filepath, ratio):
+        return True
+    try:
+        xml = et.parse(filepath)
+        for element in xml.xpath("//a:processingCategory", namespaces={"a": "http://www.loc.gov/standards/alto/ns-v4#"}):
+            if element.text.strip() == "contentGeneration":
+                return True
+    except Exception:
+        return False
+    return False
 
 
 def ocr(
@@ -111,6 +126,29 @@ def ocr(
             return None
 
 
+def ocr_and_check(
+        input_file: str,
+        model: str,
+        device: str = "cpu",
+        text_direction: str = "L",
+        pad: int = 16,
+        custom_template: bool = False,
+        template: str = "alto",
+        sub_line_segmentation: bool = False
+) -> Optional[str]:
+    if custom_ocr_check(input_file):
+        return input_file
+    return ocr(
+            input_file=input_file,
+            model=model,
+            device=device,
+            text_direction=text_direction,
+            pad=pad,
+            custom_template=custom_template,
+            template=template,
+            sub_line_segmentation=sub_line_segmentation
+    )
+
 class KrakenDirectTask(Task):
     """ Runs a Kraken Like command (Kraken, YALTAi)
 
@@ -178,7 +216,7 @@ class KrakenDirectTask(Task):
         bar = tqdm(desc=_sbmsg(f"Processing {self.desc} command"), total=total_texts)
 
         ocr_fn = partial(
-            ocr,
+            ocr_and_check,
             model=self.model_path,
             template=self.template, custom_template=self.template not in {"alto", "pagexml"},
             sub_line_segmentation=self.subline_segmentation
@@ -194,6 +232,7 @@ class KrakenDirectTask(Task):
                     if isinstance(result, str):
                         self._output_files.append(result)
                         bar.update(1)
+                        bar.set_description(result)
                 except Exception as e:
                     print(f"Task failed: {e}")
         bar.close()

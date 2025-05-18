@@ -142,7 +142,12 @@ def process_worker(batches: List[Path]):
     batches = sorted(batches)
     print(f"{len(batches)} files to process")
     if REVERSE:
-        batches = batches[::-1]
+        print(f"Reversed {len(batches)} and only processing half")
+        try:
+            batches = batches[::-1][:len(batches)//2]
+        except Exception as E:
+            print(E)
+            batches = batches[::-1]
 
     for batch in split_into_batches(batches, KRAKEN_BATCH_SIZE*10):
         images = [str(item) for item in batch]
@@ -207,12 +212,14 @@ def process_worker(batches: List[Path]):
         cleanup.process()
 
 
-        # Register all successful results in the tracker
-        directories_with_processed_files = list(set([
-            Path(xml_path).parent
-            for xml_path in kraken.output_files
-        ]))
-        archive(directories_with_processed_files, manifests)
+        # Only archive on non-reverse
+        if not REVERSE:
+            # Register all successful results in the tracker
+            directories_with_processed_files = list(set([
+                Path(xml_path).parent
+                for xml_path in kraken.output_files
+            ]))
+            archive(directories_with_processed_files, manifests)
 
 
 def find_manifest_dirs(root_dir: str) -> List[str]:
@@ -279,5 +286,6 @@ def watch_directory():
 if __name__ == "__main__":
     print("Hello, let's go")
     print_current_time()
-    clean_up_archives()
+    if not REVERSE:
+        clean_up_archives()
     watch_directory()
