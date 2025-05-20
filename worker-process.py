@@ -163,6 +163,9 @@ def process_worker(batches: List[Path]):
                 else:
                     print(f"{image.parent} has no manifests...")
                     continue
+            if len(glob.glob(f"targz/**/{image.parent.name}.tar.gz", recursive=True)):
+                print(f"\ttargz/**/{image.parent.name}.tar.gz exists")
+                continue
             kept.append(image)
         images = [str(img) for img in kept]
         random.shuffle(images)
