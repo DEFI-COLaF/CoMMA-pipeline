@@ -165,6 +165,12 @@ def single_download(tracker: ManifestTracker, manifests: List[str]):
         # Then register this expectation
         tracker.add_expected(manifest_uri, image_count)
 
+        cased = Path(tracker.manifest_to_directory[manifest_uri]).name
+
+        if len(glob.glob(f"targz/**/{cased}.tar.gz", recursive=True)):
+            print(f"\ttargz/**/{cased}.tar.gz exists")
+            continue
+
         # We rewrite the json just in case
         m = Manifest(
             manifest_id=manifest_uri,
