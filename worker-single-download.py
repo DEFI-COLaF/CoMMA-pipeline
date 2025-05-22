@@ -243,12 +243,14 @@ if __name__ == "__main__":
 
     # Load manifests and filter out already completed ones
     df = pd.read_csv("extraction_biblissima_20250410.csv", delimiter=";")["manifest_url"]
-    df = alternate_by_domain(df).tolist()
+    df = df.unique().tolist()
+    uri_renamer = lambda u: u.replace("https://gallica.bnf.fr/iiif/ark:/12148/", "https://openapi.bnf.fr/iiif/presentation/v3/ark:/12148/")
     df = [
-        uri.replace("https://gallica.bnf.fr/iiif/ark:/12148/", "https://openapi.bnf.fr/iiif/presentation/v3/ark:/12148/")
+        uri_renamer(uri) if uri_renamer(uri) not in tracker.shamelist else uri # Keep good old URIs
         for uri in df
     ]
     df = [uri for uri in df if uri not in tracker.done and uri not in tracker.shamelist]
+    df = alternate_by_domain(pd.Series(df)).tolist()
 
     parser = argparse.ArgumentParser(description="Split work among workers.")
     parser.add_argument('--max', type=int, required=True, help='Total number of workers')
