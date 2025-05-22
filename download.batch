@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=bnf-download
 #SBATCH --output=logs/download_%A_%a.out
-#SBATCH --array=1-7
+#SBATCH --array=1-10
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=2G
@@ -14,4 +14,4 @@
 source env/bin/activate
 
 # Run the script with the current task ID
-python worker-single-download.py --index ${SLURM_ARRAY_TASK_ID} --max 7
+python worker-single-download.py --index ${SLURM_ARRAY_TASK_ID} --max 10
