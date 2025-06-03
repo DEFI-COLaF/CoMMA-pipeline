@@ -39,12 +39,17 @@ class DownloadedImage:
 
 # Tracks manifest completeness and coordinates GZIP/completion logic
 class ManifestTracker:
-    def __init__(self):
+    def __init__(self, worker: int):
+        self.worker: int = worker
         self.expected: Dict[str, int] = defaultdict(int)               # manifest_id → expected image count
         self.completed: Dict[str, Set[Path]] = defaultdict(set)        # manifest_id → list of completed files
         self.retry_counts: Dict[str, int] = defaultdict(int)           # manifest_id → how many times we’ve retried
         self.done: Set[str] = set(self._load("done.txt"))              # already processed manifests (from done.txt)
+        for done in glob.glob("done-w*.txt"):
+            self.done = self.done.union(self._load(done))
         self.shamelist: Set[str] = set(self._load("shame-list.txt"))   # already processed manifests (from done.txt)
+        for shamelist in glob.glob("shame-list-w*.txt"):
+            self.shamelist = self.shamelist.union(self._load(shamelist))
         self.manifest_to_directory: Dict[str, str] = {}
         self.directory_to_manifest: Dict[str, str] = {}
         self.order: Dict[str, List] = defaultdict(list)
@@ -62,7 +67,7 @@ class ManifestTracker:
     def mark_done(self, manifest_id: str):
         # Add manifest to the done list and persist to disk
         self.done.add(manifest_id)
-        with open("done.txt", "w") as f:
+        with open(f"done-w{self.worker}.txt", "w") as f:
             f.write("\n".join(sorted(self.done)))
 
     def add_expected(self, manifest_id: str, count: int):
@@ -147,7 +152,7 @@ def single_download(tracker: ManifestTracker, manifests: List[str]):
                 result = utils.download_iiif_manifest(manifest_uri, manifest_csv)
                 if not result:
                     print("\t[Details] Manifest undownloadable")
-                    with open("shame-list.txt", "a") as f:
+                    with open(f"shame-list-w{tracker.worker}.txt", "a") as f:
                         f.writelines([str(manifest_uri) + "\n"])
                     continue
             except Exception as E:
@@ -169,6 +174,7 @@ def single_download(tracker: ManifestTracker, manifests: List[str]):
 
         if len(glob.glob(f"targz/**/{cased}.tar.gz", recursive=True)):
             print(f"\ttargz/**/{cased}.tar.gz exists")
+            tracker.mark_done(manifest_uri)
             continue
 
         # We rewrite the json just in case
@@ -226,7 +232,7 @@ def single_download(tracker: ManifestTracker, manifests: List[str]):
                     aborted = True
                     continue
         if aborted:
-            with open("shame-list.txt", "a") as f:
+            with open(f"shame-list-w{tracker.worker}.txt", "a") as f:
                 f.writelines([str(manifest_uri)+"\n"])
             #tracker.mark_done(manifest_uri)
         print(f"MANIFEST {manifest_uri} ==> ({len(m.found_images())}/{len(m.image_order)}")
@@ -239,7 +245,13 @@ def single_download(tracker: ManifestTracker, manifests: List[str]):
             time.sleep(SLEEP_TIME_BETWEEN_POOL_CHECK)
 
 if __name__ == "__main__":
-    tracker = ManifestTracker()
+    parser = argparse.ArgumentParser(description="Split work among workers.")
+    parser.add_argument('--max', type=int, required=True, help='Total number of workers')
+    parser.add_argument('--index', type=int, required=True, help='Index of this worker')
+
+    args = parser.parse_args()
+
+    tracker = ManifestTracker(args.index)
 
     # Load manifests and filter out already completed ones
     df = pd.read_csv("extraction_biblissima_20250410.csv", delimiter=";")["manifest_url"]
@@ -252,11 +264,7 @@ if __name__ == "__main__":
     df = [uri for uri in df if uri not in tracker.done and uri not in tracker.shamelist]
     df = alternate_by_domain(pd.Series(df)).tolist()
 
-    parser = argparse.ArgumentParser(description="Split work among workers.")
-    parser.add_argument('--max', type=int, required=True, help='Total number of workers')
-    parser.add_argument('--index', type=int, required=True, help='Index of this worker')
 
-    args = parser.parse_args()
     assigned_items = split_work(df, args.max, args.index)
 
     # print(df)
