@@ -19,7 +19,7 @@ def process_tar(file: str):
 
 
 if __name__ == "__main__":
-    files = glob.glob("/home/tclerice/targez/targz/*.tar.gz")
+    files = glob.glob("targz/**/*.tar.gz", recursive=True)
 
     results = []
     with ProcessPoolExecutor(max_workers=12) as executor:

@@ -1,4 +1,8 @@
 import os.path
+import os
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
 import time
 from pathlib import Path
 from typing import Set, List, Dict, Optional, Tuple

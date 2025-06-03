@@ -256,6 +256,7 @@ if __name__ == "__main__":
     # Load manifests and filter out already completed ones
     df = pd.read_csv("extraction_biblissima_20250410.csv", delimiter=";")["manifest_url"]
     df = df.unique().tolist()
+    #df = df + pd.read_csv("biblissima_bodleian.csv", delimiter=";")["manifest_url"].unique().tolist()
     uri_renamer = lambda u: u.replace("https://gallica.bnf.fr/iiif/ark:/12148/", "https://openapi.bnf.fr/iiif/presentation/v3/ark:/12148/")
     df = [
         uri_renamer(uri) if uri_renamer(uri) not in tracker.shamelist else uri # Keep good old URIs
@@ -270,4 +271,5 @@ if __name__ == "__main__":
     # print(df)
     # Launch producer and consumer
     print("[Main] Starting downloader")
+    #df = pd.read_csv("extraction_biblissima_20250410.csv", delimiter=";")["manifest_url"]
     single_download(tracker, assigned_items)
