@@ -45,7 +45,7 @@ def print_current_time():
 WATCH_DIR = "."
 YOLO_BATCH_SIZE: int = 1
 KRAKEN_BATCH_SIZE: int = int(os.getenv("KRAKEN_BATCH_SIZE", 40))
-TARGET_COUNT: int = 64 # 4 * YOLO_BATCH_SIZE # Number of jpg to reach to run produce
+TARGET_COUNT: int = 1 # 4 * YOLO_BATCH_SIZE # Number of jpg to reach to run produce
 TIME_BETWEEN_CHECK: int = 10
 CACHED_DONE = {}
 CACHED_PARSABLE = {}

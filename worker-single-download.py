@@ -192,7 +192,7 @@ def single_download(tracker: ManifestTracker, manifests: List[str]):
             print(f"\t[Details] {images_details[0][1]} is the directory")
         # We avoid webp because it's not cool
         images_details: List[Tuple[str, str, str]] = [
-            (el[0].replace(".webp", ".jpg"), *el[1:]) for el in images_details
+            (el[0], *el[1:]) for el in images_details
         ]
         print(f"\t[Details] [TIME] {datetime.datetime.now()}")
         print("Checking preprocessed")
@@ -226,7 +226,7 @@ def single_download(tracker: ManifestTracker, manifests: List[str]):
                 errors += 1
                 m.add_errors(image[0])
                 # At a maximum of 10% of errors for 50 images or more, we forget about this manuscript
-                if len(images_details) > 50 and errors / (len(images_details)) > .1:
+                if len(images_details) > 30 and errors / (len(images_details)) > .1:
                     print("\t[ERROR] Too much errors (>10% of 4xx/5xx), moving to next manuscript.")
                     m.to_json()
                     aborted = True
