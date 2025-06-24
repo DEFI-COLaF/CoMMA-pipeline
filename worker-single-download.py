@@ -15,6 +15,7 @@ from PIL import Image
 
 import pandas as pd
 import tqdm
+import unidecode
 from rtk.task import DownloadIIIFImageTask, DownloadIIIFManifestTask
 from rtk import utils
 from rtk_adapt import Manifest
@@ -140,6 +141,13 @@ def rename_image_download(image_detail: Tuple[str, str, str]) -> str:
     return os.path.join(image_detail[1], f"{image_detail[2]}.jpg")
 
 
+def kebab_with_fallback(string: str) -> str:
+    if "BSB" in string:
+        return string.split("-")[-1].strip()
+    else:
+        return cases.to_kebab(unidecode.unidecode(string))
+
+
 def single_download(tracker: ManifestTracker, manifests: List[str]):
     for manifest_uri in manifests:
         print(f"[Downloader] Downloading manifest {manifest_uri}")
@@ -149,7 +157,7 @@ def single_download(tracker: ManifestTracker, manifests: List[str]):
 
         if requires_download:
             try:
-                result = utils.download_iiif_manifest(manifest_uri, manifest_csv)
+                result = utils.download_iiif_manifest(manifest_uri, manifest_csv, naming_function=kebab_with_fallback)
                 if not result:
                     print("\t[Details] Manifest undownloadable")
                     with open(f"shame-list-w{tracker.worker}.txt", "a") as f:
@@ -256,7 +264,7 @@ if __name__ == "__main__":
     # Load manifests and filter out already completed ones
     df = pd.read_csv("extraction_biblissima_20250410.csv", delimiter=";")["manifest_url"]
     df = df.unique().tolist()
-    #df = df + pd.read_csv("biblissima_bodleian.csv", delimiter=";")["manifest_url"].unique().tolist()
+    df = df + pd.read_csv("biblissima_bodleian.csv", delimiter=";")["manifest_url"].unique().tolist()
     uri_renamer = lambda u: u.replace("https://gallica.bnf.fr/iiif/ark:/12148/", "https://openapi.bnf.fr/iiif/presentation/v3/ark:/12148/")
     df = [
         uri_renamer(uri) if uri_renamer(uri) not in tracker.shamelist else uri # Keep good old URIs
