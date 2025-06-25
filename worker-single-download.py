@@ -143,7 +143,7 @@ def rename_image_download(image_detail: Tuple[str, str, str]) -> str:
 
 def kebab_with_fallback(string: str) -> str:
     if "BSB" in string:
-        return string.split("-")[-1].strip()
+        return cases.to_kebab(unidecode.unidecode(string.split("-")[-1].strip()))
     else:
         return cases.to_kebab(unidecode.unidecode(string))
 
