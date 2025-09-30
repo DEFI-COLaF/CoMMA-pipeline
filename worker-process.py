@@ -17,8 +17,8 @@ import lxml.etree as et
 import json
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
-from rtk_adapt import YaltoCommand, Manifest, create_tar_gz_archives
-from direct_kraken import KrakenDirectTask
+from lib.rtk_adapt import YaltoCommand, Manifest, create_tar_gz_archives
+from lib.direct_kraken import KrakenDirectTask
 
 
 def naming_func(name: Path, base_dir: Path = Path("./targz")) -> Path:

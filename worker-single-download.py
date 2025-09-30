@@ -18,7 +18,7 @@ import tqdm
 import unidecode
 from rtk.task import DownloadIIIFImageTask, DownloadIIIFManifestTask
 from rtk import utils
-from rtk_adapt import Manifest
+from lib.rtk_adapt import Manifest
 import cases
 
 

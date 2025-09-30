@@ -1,7 +1,7 @@
 #!/bin/bash
-#SBATCH --job-name=bnf-download
+#SBATCH --job-name=download-worker
 #SBATCH --output=logs/download_%A_%a.out
-#SBATCH --array=1-14
+#SBATCH --array=1-14  # Change this to use more workers
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=2G
