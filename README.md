@@ -7,7 +7,7 @@ In order to use this pipeline, you need to run `pip install requirements.txt` or
 
 ## Running
 
-Run this pipeline by launching two parallel tasks, both running the `slurm-processing.sbatch` and the `worker-download.sbatch`.
+Run this pipeline by launching two parallel tasks, one running the `slurm-processing.sbatch` (Check the model used) and one the `worker-download.sbatch` (Needs a list of IIIF manifests).
  You can change the file it uses to run download, it basically needs a CSV with a `manifest_url` column.
 
 You will need to change the models configuration
