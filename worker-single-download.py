@@ -277,10 +277,12 @@ if __name__ == "__main__":
     tracker = ManifestTracker(args.index)
 
     # Load manifests and filter out already completed ones
-    df_shelfmark = pd.read_csv("test_manifest.csv", delimiter=",")[["cote", "manifest_url"]]
+    DELIMITER = ";"
+    MANIFEST = "biblissima_bodleian.csv"
+    df_shelfmark = pd.read_csv("biblissima_bodleian.csv", delimiter=",")[["cote", "manifest_url"]]
     Constant_Shelfmark = {value: key for _, (key, value) in df_shelfmark.iterrows()}
 
-    df = pd.read_csv("test_manifest.csv", delimiter=",")["manifest_url"]
+    df = pd.read_csv("biblissima_bodleian.csv", delimiter=";")["manifest_url"]
     uri_renamer = lambda u: u.replace("https://gallica.bnf.fr/iiif/ark:/12148/", "https://openapi.bnf.fr/iiif/presentation/v3/ark:/12148/")
     df = [
         uri_renamer(uri) if uri_renamer(uri) not in tracker.shamelist else uri # Keep good old URIs
