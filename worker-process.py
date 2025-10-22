@@ -109,7 +109,8 @@ def archive(directories_with_processed_files: List[Path], manifests: Dict[Path, 
                 create_tar_gz_archives(
                     uri_to_files={manifest.manifest_id: paths},
                     ordering_dict={manifest.manifest_id: ordering},
-                    naming_func=lambda x: naming_func(Path(manifest.directory).name + ".tar.gz")
+                    naming_func=lambda x: naming_func(Path(manifest.directory).name + ".tar.gz"),
+                    manifest=manifest.json_path
                 )
 
                 # Cleanup

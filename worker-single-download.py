@@ -1,4 +1,3 @@
-import asyncio
 import os
 import time
 import datetime
@@ -8,7 +7,7 @@ import argparse
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Dict, Tuple, Set
+from typing import List, Dict, Tuple, Set, Any, Optional
 from collections import defaultdict, deque
 from urllib.parse import urlparse
 from PIL import Image
@@ -16,10 +15,9 @@ from PIL import Image
 import pandas as pd
 import tqdm
 import unidecode
-from rtk.task import DownloadIIIFImageTask, DownloadIIIFManifestTask
 from rtk import utils
 from lib.rtk_adapt import Manifest
-import cases
+import anycase as cases
 
 
 # Constants
@@ -141,11 +139,27 @@ def rename_image_download(image_detail: Tuple[str, str, str]) -> str:
     return os.path.join(image_detail[1], f"{image_detail[2]}.jpg")
 
 
-def kebab_with_fallback(string: str) -> str:
-    if "BSB " in string or "bsb " in string.lower():
-        return cases.to_kebab(unidecode.unidecode(string.split("-")[-1].strip()))
-    else:
-        return cases.to_kebab(unidecode.unidecode(string))
+def get_identifier(iiif_object: Dict[str, Any]) -> Optional[str]:
+    identifiers = [None]
+    for entry in iiif_object.get("metadata", []):
+        labels = entry.get("label", None)
+        if isinstance(labels, list):
+            labels = {
+                (lbl.get("@value", "").lower() if isinstance(lbl, dict) else lbl.lower())
+                for lbl in entry.get("label")
+            }
+        else:
+            labels = {labels.lower()}
+        if "shelfmark" in labels:
+            return entry["value"]
+        elif "identifier" in labels:
+            return entry["value"]
+
+def kebab_with_fallback(string: str, fallback: Dict[str, Any] = None) -> str:
+    if fallback and fallback["@id"] in Constant_Shelfmark:
+        string = Constant_Shelfmark[fallback["@id"]]
+
+    return cases.to_kebab(unidecode.unidecode(string))
 
 
 def single_download(tracker: ManifestTracker, manifests: List[str]):
@@ -184,13 +198,14 @@ def single_download(tracker: ManifestTracker, manifests: List[str]):
             print(f"\ttargz/**/{cased}.tar.gz exists")
             tracker.mark_done(manifest_uri)
             continue
-
+        print(images_details)
         # We rewrite the json just in case
         m = Manifest(
             manifest_id=manifest_uri,
             directory=tracker.manifest_to_directory[manifest_uri],
             image_order=tracker.order[manifest_uri],
-            total_images=tracker.expected[manifest_uri]
+            total_images=tracker.expected[manifest_uri],
+            uris=[k for (k, *_) in images_details]
         )
         m.to_json()
 
@@ -262,9 +277,10 @@ if __name__ == "__main__":
     tracker = ManifestTracker(args.index)
 
     # Load manifests and filter out already completed ones
-    df = pd.read_csv("extraction_biblissima_20250410.csv", delimiter=";")["manifest_url"]
-    df = df.unique().tolist()
-    df = df + pd.read_csv("biblissima_bodleian.csv", delimiter=";")["manifest_url"].unique().tolist()
+    df_shelfmark = pd.read_csv("test_manifest.csv", delimiter=",")[["cote", "manifest_url"]]
+    Constant_Shelfmark = {value: key for _, (key, value) in df_shelfmark.iterrows()}
+
+    df = pd.read_csv("test_manifest.csv", delimiter=",")["manifest_url"]
     uri_renamer = lambda u: u.replace("https://gallica.bnf.fr/iiif/ark:/12148/", "https://openapi.bnf.fr/iiif/presentation/v3/ark:/12148/")
     df = [
         uri_renamer(uri) if uri_renamer(uri) not in tracker.shamelist else uri # Keep good old URIs
@@ -272,7 +288,6 @@ if __name__ == "__main__":
     ]
     df = [uri for uri in df if uri not in tracker.done and uri not in tracker.shamelist]
     df = alternate_by_domain(pd.Series(df)).tolist()
-
 
     assigned_items = split_work(df, args.max, args.index)
 

@@ -1,1 +1,5 @@
-*
+ignore-*.py
+*.csv
+.venv
+.idea
+__pycache__/

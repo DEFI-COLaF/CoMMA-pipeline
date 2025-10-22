@@ -23,6 +23,11 @@ class Manifest:
     image_order: List[str] = dataclasses.field(default_factory=list)
     total_images: int = 0
     errors: List[str] = dataclasses.field(default_factory=list)
+    uris: List[str] = dataclasses.field(default_factory=list)
+
+    @property
+    def json_path(self) -> str:
+        return str(Path(self.directory) / ".manifest.json")
 
     @property
     def images(self):
@@ -197,6 +202,7 @@ def create_tar_gz_archives(
     uri_to_files: Dict[str, List[Path]],
     naming_func: Callable[[str], Path],
     ordering_dict: Dict[str, List[Path]],
+    manifest: str
 ) -> None:
     """
     Creates a .tar.gz archive for each URI with a manifest and files.
@@ -223,3 +229,4 @@ def create_tar_gz_archives(
             for file_path in files:
                 if Path(file_path).is_file():
                     tar.add(file_path, arcname=Path(file_path).name)
+            tar.addfile(manifest, arcname="simpler_manifest.json")
