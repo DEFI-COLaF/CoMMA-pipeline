@@ -257,11 +257,10 @@ def single_download(tracker: ManifestTracker, manifests: List[str], max_download
                     m.to_json()
                     aborted = True
                     continue
-            else:
-                downloaded += 1
-                if max_download != -1 and downloaded >= max_download:
-                    print(f"Stopping the run here, reached maximum downloads {downloaded}")
-                    return
+            downloaded += 1
+            if max_download != -1 and downloaded >= max_download:
+                print(f"Stopping the run here, reached maximum downloads {downloaded}")
+                return
         if aborted:
             with open(f"shame-list-w{tracker.worker}.txt", "a") as f:
                 f.writelines([str(manifest_uri)+"\n"])
