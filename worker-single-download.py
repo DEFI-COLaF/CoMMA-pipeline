@@ -306,19 +306,39 @@ def load_biblissima_data(csv_files: List[Tuple[str, str]]) -> Tuple[List[str], d
 
 
 if __name__ == "__main__":
+
+    def parse_file_sep(arg: str) -> Tuple[str, str]:
+        """
+        Parse a string in the format 'filename=separator'.
+        Example: 'data.csv=;' -> ('data.csv', ';')
+        """
+        if '=' not in arg:
+            raise argparse.ArgumentTypeError(
+                "Each file must be specified as 'filename=separator', e.g. 'data.csv=;'"
+            )
+        filename, sep = arg.split('=', 1)
+        if not filename or not sep:
+            raise argparse.ArgumentTypeError(f"Invalid format for file argument: '{arg}'")
+        return filename, sep
+
     parser = argparse.ArgumentParser(description="Split work among workers.")
     parser.add_argument('--max', type=int, required=True, help='Total number of workers')
     parser.add_argument('--index', type=int, required=True, help='Index of this worker')
-
+    parser.add_argument(
+        "--files",
+        nargs="+",
+        type=parse_file_sep,
+        metavar="FILE=SEP",
+        help="List of CSV files with their separators, e.g. 'file.csv=;' or 'data.csv=$'",
+        required=True,
+    )
     args = parser.parse_args()
 
     tracker = ManifestTracker(args.index)
 
     # Load manifests and filter out already completed ones
-    csvs = [("biblissima_bodleian.csv", ";"), ("biblissima_arca_gallica_addenda_20251021.csv", "$")]
-    df, Constant_Shelfmark = load_biblissima_data(csvs)
-    df = [elem for elem in df if "api.digitale-sammlungen.de" not in elem]
-    print(df[:10])
+    df, Constant_Shelfmark = load_biblissima_data(args.files)
+
     uri_renamer = lambda u: u.replace("https://gallica.bnf.fr/iiif/ark:/12148/", "https://openapi.bnf.fr/iiif/presentation/v3/ark:/12148/")
     df = [
         uri_renamer(uri) if uri_renamer(uri) not in tracker.shamelist else uri # Keep good old URIs
