@@ -1,11 +1,10 @@
 #!/bin/bash
 #SBATCH --job-name=comma-download
 #SBATCH --output=logs/download_%A_%a.out
-#SBATCH --array=1-14  # Change this to use more workers
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=2G
-#SBATCH --time=7-00:00:00
+#SBATCH --time=24:00:00
 
 # Load necessary modules (if any)
 # module load python/3.x
@@ -14,4 +13,8 @@
 source env/bin/activate
 
 # Run the script with the current task ID
-python worker-single-download.py --index ${SLURM_ARRAY_TASK_ID} --max 14 --files "not_contains_bsb.csv=;" --files "biblissima_arca_gallica_addenda_20251021.csv=$"
+python worker-single-download.py --index 1 --max 1 --files "contains_bsb.csv=;" --max_download 5000
+
+# ---- Schedule rerun ----
+echo "[$(date)] Job finished, resubmitting for tomorrow..."
+sbatch --begin=now+24hours "$0"

@@ -164,7 +164,8 @@ def kebab_with_fallback(string: str, fallback: Dict[str, Any] = None) -> str:
     return cases.to_kebab(unidecode.unidecode(string))
 
 
-def single_download(tracker: ManifestTracker, manifests: List[str]):
+def single_download(tracker: ManifestTracker, manifests: List[str], max_download: int):
+    downloaded = 0
     for manifest_uri in manifests:
         print(f"[Downloader] Downloading manifest {manifest_uri}")
         print(f"[TIME] {datetime.datetime.now()}")
@@ -255,6 +256,11 @@ def single_download(tracker: ManifestTracker, manifests: List[str]):
                     m.to_json()
                     aborted = True
                     continue
+            else:
+                downloaded += 1
+                if max_download != -1 and downloaded >= max_download:
+                    print(f"Stopping the run here, reached maximum downloads {downloaded}")
+                    return
         if aborted:
             with open(f"shame-list-w{tracker.worker}.txt", "a") as f:
                 f.writelines([str(manifest_uri)+"\n"])
@@ -332,13 +338,14 @@ if __name__ == "__main__":
         help="List of CSV files with their separators, e.g. 'file.csv=;' or 'data.csv=$'",
         required=True,
     )
+    parser.add_argument("--max_download", type=int, required=False, default=-1)
     args = parser.parse_args()
 
     tracker = ManifestTracker(args.index)
 
     # Load manifests and filter out already completed ones
     df, Constant_Shelfmark = load_biblissima_data(args.files)
-
+    Constant_Max_Download: int = args.max_download
     uri_renamer = lambda u: u.replace("https://gallica.bnf.fr/iiif/ark:/12148/", "https://openapi.bnf.fr/iiif/presentation/v3/ark:/12148/")
     df = [
         uri_renamer(uri) if uri_renamer(uri) not in tracker.shamelist else uri # Keep good old URIs
@@ -353,4 +360,4 @@ if __name__ == "__main__":
     # Launch producer and consumer
     print("[Main] Starting downloader")
     #df = pd.read_csv("extraction_biblissima_20250410.csv", delimiter=";")["manifest_url"]
-    single_download(tracker, assigned_items)
+    single_download(tracker, assigned_items, max_download=args.max_download)
