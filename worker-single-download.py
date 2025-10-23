@@ -181,7 +181,8 @@ def single_download(tracker: ManifestTracker, manifests: List[str], max_download
                         f.writelines([str(manifest_uri) + "\n"])
                     continue
             except Exception as E:
-                print(f"\t[ERROR]{E}")
+                print(f"\t[ERROR] {E}")
+                print(E)
                 continue
 
         images_details = parse_manifest(manifest_csv)
@@ -338,8 +339,11 @@ if __name__ == "__main__":
         help="List of CSV files with their separators, e.g. 'file.csv=;' or 'data.csv=$'",
         required=True,
     )
+    parser.add_argument('--queue', type=int, default=MAX_QUEUE_SIZE, help='Total number of workers')
     parser.add_argument("--max_download", type=int, required=False, default=-1)
     args = parser.parse_args()
+
+    MAX_QUEUE_SIZE = args.queue
 
     tracker = ManifestTracker(args.index)
 
@@ -353,9 +357,10 @@ if __name__ == "__main__":
     ]
     df = [uri for uri in df if uri not in tracker.done and uri not in tracker.shamelist]
     df = alternate_by_domain(pd.Series(df)).tolist()
-
-    assigned_items = split_work(df, args.max, args.index)
-
+    if args.max > 1:
+        assigned_items = split_work(df, args.max, args.index)
+    else:
+        assigned_items = df
     # print(df)
     # Launch producer and consumer
     print("[Main] Starting downloader")
