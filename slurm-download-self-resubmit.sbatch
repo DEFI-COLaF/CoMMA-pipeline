@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=comma-download
-#SBATCH --output=logs/download_%A_%a.out
+#SBATCH --output=logs/single_download_%A_%a.out
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=2G
