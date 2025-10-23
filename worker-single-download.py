@@ -156,8 +156,10 @@ def get_identifier(iiif_object: Dict[str, Any]) -> Optional[str]:
             return entry["value"]
 
 def kebab_with_fallback(string: str, fallback: Dict[str, Any] = None) -> str:
-    if fallback and fallback["@id"] in Constant_Shelfmark:
-        string = Constant_Shelfmark[fallback["@id"]]
+    if fallback:# and fallback.get("@id") in Constant_Shelfmark:
+        _id = fallback.get("@id", fallback.get("id"))
+        if _id in Constant_Shelfmark:
+            string = Constant_Shelfmark[_id]
 
     return cases.to_kebab(unidecode.unidecode(string))
 
@@ -198,7 +200,6 @@ def single_download(tracker: ManifestTracker, manifests: List[str]):
             print(f"\ttargz/**/{cased}.tar.gz exists")
             tracker.mark_done(manifest_uri)
             continue
-        print(images_details)
         # We rewrite the json just in case
         m = Manifest(
             manifest_id=manifest_uri,
@@ -267,6 +268,43 @@ def single_download(tracker: ManifestTracker, manifests: List[str]):
             print("[WAIT] Waiting for some queue space")
             time.sleep(SLEEP_TIME_BETWEEN_POOL_CHECK)
 
+
+def load_biblissima_data(csv_files: List[Tuple[str, str]]) -> Tuple[List[str], dict]:
+    """
+    Load multiple CSV files containing 'cote' and 'manifest_url' columns,
+    build a shelfmark mapping, and return a DataFrame of unique manifest URLs
+    and a dictionary mapping manifest URLs to shelfmarks.
+
+    Parameters
+    ----------
+    csv_files : List[str]
+        List of CSV file paths to read.
+    delimiter : str, optional
+        CSV delimiter (default: ';').
+
+    Returns
+    -------
+    df : pd.DataFrame
+        DataFrame with a single column 'manifest_url' containing unique values.
+    Constant_Shelfmark : dict
+        Mapping from manifest_url to cote.
+    """
+    all_dfs = []
+    shelfmark_mappings = {}
+
+    for file, delimiter in csv_files:
+        df_shelfmark = pd.read_csv(file, delimiter=delimiter)[["cote", "manifest_url"]]
+        mapping = {value: key for _, (key, value) in df_shelfmark.iterrows()}
+        shelfmark_mappings.update(mapping)
+        all_dfs.append(df_shelfmark[["manifest_url"]])
+
+    # Combine all DataFrames and get unique manifest URLs
+    df = pd.concat(all_dfs, ignore_index=True)
+    df = pd.DataFrame({"manifest_url": df["manifest_url"].unique()})["manifest_url"].tolist()
+
+    return df, shelfmark_mappings
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Split work among workers.")
     parser.add_argument('--max', type=int, required=True, help='Total number of workers')
@@ -277,12 +315,10 @@ if __name__ == "__main__":
     tracker = ManifestTracker(args.index)
 
     # Load manifests and filter out already completed ones
-    DELIMITER = ";"
-    MANIFEST = "biblissima_bodleian.csv"
-    df_shelfmark = pd.read_csv("biblissima_bodleian.csv", delimiter=",")[["cote", "manifest_url"]]
-    Constant_Shelfmark = {value: key for _, (key, value) in df_shelfmark.iterrows()}
-
-    df = pd.read_csv("biblissima_bodleian.csv", delimiter=";")["manifest_url"]
+    csvs = [("biblissima_bodleian.csv", ";"), ("biblissima_arca_gallica_addenda_20251021.csv", "$")]
+    df, Constant_Shelfmark = load_biblissima_data(csvs)
+    df = [elem for elem in df if "api.digitale-sammlungen.de" not in elem]
+    print(df[:10])
     uri_renamer = lambda u: u.replace("https://gallica.bnf.fr/iiif/ark:/12148/", "https://openapi.bnf.fr/iiif/presentation/v3/ark:/12148/")
     df = [
         uri_renamer(uri) if uri_renamer(uri) not in tracker.shamelist else uri # Keep good old URIs

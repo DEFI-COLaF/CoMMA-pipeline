@@ -229,4 +229,4 @@ def create_tar_gz_archives(
             for file_path in files:
                 if Path(file_path).is_file():
                     tar.add(file_path, arcname=Path(file_path).name)
-            tar.addfile(manifest, arcname="simpler_manifest.json")
+            tar.add(manifest, arcname="simpler_manifest.json")
