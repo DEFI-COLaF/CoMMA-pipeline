@@ -14,4 +14,4 @@
 source env/bin/activate
 
 # Run the script with the current task ID
-python worker-single-download.py --index ${SLURM_ARRAY_TASK_ID} --max 14 --files "not_contains_bsb.csv=;" --files "biblissima_arca_gallica_addenda_20251021.csv=$"
+python worker_single_download.py --index ${SLURM_ARRAY_TASK_ID} --max 14 --files "not_contains_bsb.csv=;" --files "biblissima_arca_gallica_addenda_20251021.csv=$"

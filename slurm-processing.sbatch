@@ -21,7 +21,7 @@ start=`date +%s`
 source env/bin/activate
 echo $start 
 echo "Running worker"
-KRAKEN_BATCH_SIZE=92 python worker-process.py
+KRAKEN_BATCH_SIZE=92 python worker_process.py
 
 conda deactivate
 

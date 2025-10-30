@@ -13,7 +13,7 @@
 source env/bin/activate
 
 # Run the script with the current task ID
-python worker-single-download.py --index 1 --max 1 --files "contains_bsb.csv=;" --max_download 7000 --queue 1000000
+python worker_single_download.py --index 1 --max 1 --files "contains_bsb.csv=;" --max_download 7000 --queue 1000000
 
 # ---- Schedule rerun ----
 echo "[$(date)] Job finished, resubmitting for tomorrow..."
