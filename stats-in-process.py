@@ -54,6 +54,8 @@ def main(root: str):
         if res:
             results.append(res)
 
+    results = sorted(results, key=lambda x: x["jpg"])
+
     # Build pretty table
     table = Table(title="Directory Status Report", show_lines=True)
     table.add_column("Folder", style="bold")
@@ -66,6 +68,8 @@ def main(root: str):
 
     total_expected = total_jpg = total_xml = complete_count = 0
 
+    recommending_remove = []
+
     for r in results:
         color = "green" if r["complete"] else "yellow" if r["pct_jpg"] > 50 else "red"
         table.add_row(
@@ -77,6 +81,9 @@ def main(root: str):
             f"[{color}]{r['pct_xml']:.1f}%[/]",
             "[bold green]✔[/]" if r["complete"] else "[red]✘[/]",
         )
+
+        if r["jpg"] > r["expected"]:
+            recommending_remove.append(r["folder"])
 
         total_expected += r["expected"]
         total_jpg += r["jpg"]
@@ -96,6 +103,8 @@ def main(root: str):
     console.print(f"Total expected images: {total_expected}")
     console.print(f"Total present JPGs: {total_jpg} ({overall_jpg_pct:.1f}%)")
     console.print(f"Total XMLs: {total_xml} ({overall_xml_pct:.1f}% of JPGs)\n")
+
+    print(f"Rec. removing:\nrm -r {' '.join(recommending_remove)}")
 
 if __name__ == "__main__":
     import argparse

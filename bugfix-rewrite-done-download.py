@@ -99,6 +99,6 @@ if __name__ == "__main__":
 
     print(f"{len(downloaded)/len(manifest_exist)*100:.2f}% of manifests downloaded have been fully processed ({len(downloaded)})")
 
-    if not args.dry:
+    if not args.dry_run:
         with open("done.txt") as f:
             f.write("\n".join(downloaded))
