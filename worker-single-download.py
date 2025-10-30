@@ -267,7 +267,7 @@ def single_download(tracker: ManifestTracker, manifests: List[str], max_download
             #tracker.mark_done(manifest_uri)
         print(f"MANIFEST {manifest_uri} ==> ({len(m.found_images())}/{len(m.image_order)}")
         print(f"\t[Details] Directory is {m.directory}")
-
+        print(f"Total download: {downloaded}")
         # Now check if pause !
 
         while (len(glob.glob("./*/*.jpg")) - len(glob.glob("./*/*.xml")) - 1000) >= MAX_QUEUE_SIZE:

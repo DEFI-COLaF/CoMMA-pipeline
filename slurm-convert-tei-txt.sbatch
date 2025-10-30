@@ -17,3 +17,5 @@ echo "$dt"
 python worker-convert-tei-txt.py
 python stats-count.py
 
+echo "[$(date)] Job finished, resubmitting for tomorrow..."
+sbatch --begin=now+24hours "$0"
