@@ -4,6 +4,7 @@ import datetime
 import glob
 import csv
 import argparse
+import tarfile
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,6 +12,7 @@ from typing import List, Dict, Tuple, Set, Any, Optional
 from collections import defaultdict, deque
 from urllib.parse import urlparse
 from PIL import Image
+
 
 import pandas as pd
 import tqdm
@@ -28,6 +30,31 @@ RETRY_DELAY = 10                                        # Seconds to wait before
 MAX_QUEUE_SIZE = 1240*60                                # Number of batch that we can keep without processing
 SLEEP_TIME_BETWEEN_POOL_CHECK = 20
 MANIFEST_DIRECTORY: str = "output"
+
+
+def count_xml_in_targz(path: str) -> int:
+    """
+    Count the number of .xml files in each given .tar.gz archive.
+
+    Args:
+        path (Path): List of paths to .tar.gz files.
+
+    Returns:
+        Dict[Path, int]: Mapping from archive path to the number of .xml files found.
+    """
+    path = Path(path)
+
+    count = 0
+    try:
+        with tarfile.open(path, "r:gz") as tar:
+            for member in tar.getmembers():
+                if member.isfile() and member.name.lower().endswith(".xml"):
+                    count += 1
+    except tarfile.TarError as e:
+        print(f"Error reading {path}: {e}")
+        count = 0
+
+    return count
 
 
 # Represents a successfully downloaded image and which manifest it belongs to
@@ -198,10 +225,6 @@ def single_download(tracker: ManifestTracker, manifests: List[str], max_download
 
         cased = Path(tracker.manifest_to_directory[manifest_uri]).name
 
-        if len(glob.glob(f"targz/**/{cased}.tar.gz", recursive=True)):
-            print(f"\ttargz/**/{cased}.tar.gz exists")
-            tracker.mark_done(manifest_uri)
-            continue
         # We rewrite the json just in case
         m = Manifest(
             manifest_id=manifest_uri,
@@ -210,6 +233,26 @@ def single_download(tracker: ManifestTracker, manifests: List[str], max_download
             total_images=tracker.expected[manifest_uri],
             uris=[k for (k, *_) in images_details]
         )
+        override_targz_exist = False
+        if os.path.exists(f"./{cased}"):
+            try:
+                m2 = Manifest.from_json(f"./{cased}/.manifest.json")
+                if len(m2.images) < len(m.images):
+                    override_targz_exist = True
+            except Exception as e:
+                print(f"\t[Error] No manifest in pre-existing directory {cased}")
+
+        done = False
+        if not override_targz_exist:
+            targz_found = glob.glob(f"targz/**/{cased}.tar.gz", recursive=True)
+            for targz_path in targz_found:
+                xml_in_targs: int = count_xml_in_targz(targz_path)
+                if xml_in_targs >= len(m.images):
+                    print(f"\ttargz/**/{cased}.tar.gz exists and is larger/same size as current manifest")
+                    tracker.mark_done(manifest_uri)
+                    break
+        if done:
+            continue
         m.to_json()
 
         # Now we prepare the images

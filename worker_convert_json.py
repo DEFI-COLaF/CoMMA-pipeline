@@ -172,4 +172,4 @@ if __name__ == "__main__":
     # Optional: Print or log errors
     for file, status in results:
         if status != "success":
-            print(f"{file} failed with {status}")[tclerice@cleps download-bnf]
+            print(f"{file} failed with {status}")
