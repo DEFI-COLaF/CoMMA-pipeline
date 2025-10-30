@@ -31,31 +31,9 @@ def parse_file_sep(arg: str) -> Tuple[str, str]:
         raise argparse.ArgumentTypeError(f"Invalid format for file argument: '{arg}'")
     return filename, sep
 
-#
-# df = pd.read_csv("extraction_biblissima_20250410.csv", delimiter=";")["manifest_url"]
-# df = [
-#     uri.replace("https://gallica.bnf.fr/iiif/ark:/12148/", "https://openapi.bnf.fr/iiif/presentation/v3/ark:/12148/")
-#     for uri in df
-# ]
-# downloaded = []
-# for uri in tqdm.tqdm(df):
-#     name = f"output/{cases.to_kebab(uri)}.csv"
-#     if os.path.exists(name):
-#         with open(name) as f:
-#             reader = csv.reader(f)
-#             data = next(iter(reader))[1]+".tar.gz"
-#             exists = file_exists_recursive(data)
-#         if exists:
-#             #print(uri, data, exists)
-#             downloaded.append(uri)
-#
-#
-# with open("done.txt", "w") as f:
-#     f.write("\n".join(downloaded))
-
 if __name__ == "__main__":
     from worker_single_download import (load_biblissima_data, rename_manifest_download, parse_manifest,
-                                        count_xml_in_targz)
+                                        count_xml_in_targz, uri_renamer)
     parser = argparse.ArgumentParser(description="Parse source CSV to detect down work.")
     parser.add_argument(
         "--files",
@@ -80,7 +58,15 @@ if __name__ == "__main__":
     for manifest_uri in tqdm.tqdm(manifest_list):
         manifest_csv = rename_manifest_download(manifest_uri, cases.to_kebab)
         if os.path.exists(manifest_csv):
+            # This in fact bypass the need for Constant_Shelfmark because we get the directory
             manifest_exist.append((manifest_csv, manifest_uri))
+            continue
+
+        manifest_uri = uri_renamer(manifest_uri)
+        if os.path.exists(manifest_csv):
+            # This in fact bypass the need for Constant_Shelfmark because we get the directory
+            manifest_exist.append((manifest_csv, manifest_uri))
+            continue
 
     print(f"{len(manifest_exist)/len(manifest_list)*100:.2f}% of manifests downloaded ({len(manifest_exist)})")
     downloaded = []
@@ -100,5 +86,5 @@ if __name__ == "__main__":
     print(f"{len(downloaded)/len(manifest_exist)*100:.2f}% of manifests downloaded have been fully processed ({len(downloaded)})")
 
     if not args.dry_run:
-        with open("done.txt") as f:
+        with open("done.txt", "w") as f:
             f.write("\n".join(downloaded))
