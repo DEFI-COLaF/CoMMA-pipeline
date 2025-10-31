@@ -408,7 +408,7 @@ if __name__ == "__main__":
 
     # Load manifests and filter out already completed ones
     df, Constant_Shelfmark = load_biblissima_data(args.files)
-    for key in Constant_Shelfmark:
+    for key in list(Constant_Shelfmark.keys()):
         Constant_Shelfmark[uri_renamer(key)] = Constant_Shelfmark[key]
 
     Constant_Max_Download: int = args.max_download
