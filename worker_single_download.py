@@ -43,6 +43,9 @@ def uri_renamer(uri: str) -> str:
     return uri.replace(
         "https://gallica.bnf.fr/iiif/ark:/12148/",
         "https://openapi.bnf.fr/iiif/presentation/v3/ark:/12148/"
+    ).replace(
+        "http://gallica.bnf.fr/iiif/ark:/12148/",
+        "https://openapi.bnf.fr/iiif/presentation/v3/ark:/12148/"
     )
 
 def count_xml_in_targz(path: str) -> int:

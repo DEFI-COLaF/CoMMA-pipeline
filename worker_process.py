@@ -260,6 +260,7 @@ def watch_directory():
         print_current_time()
         jpgs = set()
         for directory in find_manifest_dirs("."):
+            # We list JPGs first, that we know are unprocessed
             jpgs = jpgs.union(
                 set([
                     file
@@ -267,12 +268,13 @@ def watch_directory():
                     if not file.with_suffix(".xml").exists()
                 ])
             )
-            # Check all xml without jpgs
+            # Check all XML that have JPGs but might not be well processed
             for file in sorted(glob.glob(f"./{directory}/*.xml")):
                 # If OCR was not done, it means it needs to be done :)
                 if not custom_ocr_check(file):
                     if os.path.exists(Path(file).with_suffix(".jpg")):
                         jpgs.add(Path(file).with_suffix(".jpg"))
+                    print(f"Wrong / Incomplete XML detected: {file}")
 
         jpgs = filter_valid_jpgs(jpgs, max_workers=KRAKEN_BATCH_SIZE)
 

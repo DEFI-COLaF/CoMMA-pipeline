@@ -18,6 +18,7 @@ def analyze_directory(path: Path):
         manifest = json.loads(manifest_path.read_text())
         image_order = manifest.get("image_order", [])
         expected_count = len(image_order)
+        uris = manifest.get("uris", [])
     except Exception as e:
         console.print(f"[red]Error reading {manifest_path}: {e}[/red]")
         return None
@@ -32,6 +33,14 @@ def analyze_directory(path: Path):
     pct_xml = (matching_xml_count / present_jpg_count * 100) if present_jpg_count else 0
     complete = expected_count == present_jpg_count == matching_xml_count
 
+    to_download = []
+
+    for image_uri, image_name in zip(uris, image_order):
+        if image_name not in jpgs:
+            to_download.append((image_uri, f"{path}/{image_name}.jpg"))
+
+    to_reprocess = list(map(lambda x: f"{path}/{x}.jpg", jpgs - xmls))
+
     return {
         "folder": path.name,
         "expected": expected_count,
@@ -40,6 +49,8 @@ def analyze_directory(path: Path):
         "pct_jpg": pct_jpg,
         "pct_xml": pct_xml,
         "complete": complete,
+        "downloadable": to_download,
+        "to_reprocess": to_reprocess
     }
 
 def main(root: str):
@@ -69,6 +80,7 @@ def main(root: str):
     total_expected = total_jpg = total_xml = complete_count = 0
 
     recommending_remove = []
+    to_reprocess = []
 
     for r in results:
         color = "green" if r["complete"] else "yellow" if r["pct_jpg"] > 50 else "red"
@@ -90,6 +102,7 @@ def main(root: str):
         total_xml += r["xml"]
         if r["complete"]:
             complete_count += 1
+        to_reprocess.extend( r["to_reprocess"])
 
     console.print(table)
 
@@ -105,6 +118,25 @@ def main(root: str):
     console.print(f"Total XMLs: {total_xml} ({overall_xml_pct:.1f}% of JPGs)\n")
 
     print(f"Rec. removing:\nrm -r {' '.join(recommending_remove)}")
+
+    temp_download = []
+    for r in results:
+        if r["pct_jpg"] > 90:
+            for image_uri, image_dest in r["downloadable"]:
+                temp_download.append(f"wget -O '{image_dest}' '{image_uri}'")
+    print(f"Writint temp-download.sh with {len(temp_download)} downloads to do")
+    with open("temp-download.sbatch", "w") as f:
+        f.write("""#!/bin/sh
+#SBATCH --job-name=comma_bugfix_download
+#SBATCH --cpus-per-task=2
+#SBATCH --mem=1G
+#SBATCH --time=12:00:00
+#SBATCH --output=logs/download_bugfix.out
+#SBATCH --error=logs/download_bugfix.err
+
+""" + "\n".join(temp_download))
+
+    #print(to_reprocess)
 
 if __name__ == "__main__":
     import argparse

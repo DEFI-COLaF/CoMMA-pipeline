@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=comma-download
 #SBATCH --output=logs/download_%A_%a.out
-#SBATCH --array=1-14  # Change this to use more workers
+#SBATCH --array=1-6  # Change this to use more workers
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=2G
@@ -14,4 +14,4 @@
 source env/bin/activate
 
 # Run the script with the current task ID
-python worker_single_download.py --index ${SLURM_ARRAY_TASK_ID} --max 14 --files "not_contains_bsb.csv=;" "biblissima_arca_gallica_addenda_20251021.csv=$"
+python worker_single_download.py --index ${SLURM_ARRAY_TASK_ID} --max 6 --files "not_contains_bsb.csv=;" "biblissima_arca_gallica_addenda_20251021.csv=$" "oxford.csv=$"
