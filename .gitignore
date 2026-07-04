@@ -12,10 +12,17 @@ wordcount.json
 # Source directories (kept despite `*/`)
 !/assets/
 !/lib/
+!/scripts/
 !/tests/
 !/templates/
 !/docs/
 !/.github/
 !/.github/workflows/
+# slurm/: hand-written helpers are tracked, generated launchers are not
+!/slurm/
+/slurm/slurm-download.sbatch
+/slurm/slurm-processing.sbatch
+/slurm/slurm-convert-json.sbatch
+/slurm/slurm-convert-tei-txt.sbatch
 # Local guidance for Claude Code, intentionally not committed
 CLAUDE.md

@@ -10,3 +10,4 @@ unidecode
 Pillow
 lxml
 threadpoolctl
+rich

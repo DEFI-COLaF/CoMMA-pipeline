@@ -17,6 +17,6 @@ jobs:
       - name: Install test dependencies
         run: pip install lxml tqdm
       - name: Syntax-check every script
-        run: python -m py_compile *.py lib/*.py tests/*.py
+        run: python -m py_compile *.py lib/*.py scripts/*.py tests/*.py
       - name: Run tests
         run: python -m unittest discover -s tests -v

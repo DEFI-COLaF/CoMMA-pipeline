@@ -1,3 +1,9 @@
+# Allow running from anywhere: put the repo root (parent of scripts/) on sys.path
+import sys as _sys
+from pathlib import Path as _Path
+_sys.path.insert(0, str(_Path(__file__).resolve().parent.parent))
+
+
 import argparse
 from collections import defaultdict
 
@@ -7,7 +13,8 @@ import anycase as cases
 from typing import List, Dict, Tuple
 from pathlib import Path
 from worker_single_download import (load_biblissima_data, rename_manifest_download, parse_manifest,
-                                    count_xml_in_targz, Manifest, parse_file_sep, uri_renamer)
+                                    count_xml_in_targz, Manifest, parse_file_sep)
+from lib.uris import to_openapi as uri_renamer
 
 
 if __name__ == "__main__":
@@ -28,7 +35,6 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
     manifest_list, Constant_Shelfmark = load_biblissima_data(args.files)
-    uri_renamer = lambda u: u.replace("https://gallica.bnf.fr/iiif/ark:/12148/", "https://openapi.bnf.fr/iiif/presentation/v3/ark:/12148/")
 
     # First we find what we downloaded as far as manifest go
     manifest_exist = []

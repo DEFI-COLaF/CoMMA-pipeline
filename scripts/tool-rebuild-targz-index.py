@@ -7,6 +7,12 @@ for every archive path not yet indexed. Idempotent: a second run adds nothing.
 Run once in production after deploying the index code, then whenever archives
 were produced by an older pipeline version.
 """
+# Allow running from anywhere: put the repo root (parent of scripts/) on sys.path
+import sys as _sys
+from pathlib import Path as _Path
+_sys.path.insert(0, str(_Path(__file__).resolve().parent.parent))
+
+
 import os
 import sys
 

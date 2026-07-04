@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 from string import Template
 
-TEMPLATE_DIR = Path(__file__).parent / "templates"
+TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates"
 
 # "workers" means: download = SLURM array size (--max), converters =
 # CONVERT_WORKERS (process pool size). The processing stage takes cpus/mem at
@@ -45,6 +45,7 @@ def generate(stage: str, args: argparse.Namespace) -> Path:
 
     template = Template((TEMPLATE_DIR / f"slurm-{stage}.sbatch.tpl").read_text())
     out_path = Path(args.output_dir) / f"slurm-{stage}.sbatch"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(template.safe_substitute(values))
     return out_path
 
@@ -67,7 +68,7 @@ if __name__ == "__main__":
                         + ", ".join(f"{s}={v['time']}" for s, v in STAGES.items()) + ")")
     parser.add_argument("--account", help="--account (default: none)")
     parser.add_argument("--partition", help="--partition (default: none)")
-    parser.add_argument("--output-dir", default=".", help="Where to write the .sbatch files")
+    parser.add_argument("--output-dir", default="slurm", help="Where to write the .sbatch files")
     args = parser.parse_args()
 
     stages = args.stages or list(STAGES)

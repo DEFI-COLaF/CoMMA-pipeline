@@ -15,7 +15,7 @@ dt=$(date '+%d/%m/%Y %H:%M:%S');
 echo "$dt"
 
 CONVERT_WORKERS=${workers} python worker_convert_tei_txt.py
-python stats-count.py
+python scripts/stats-count.py
 
 echo "[$(date)] Job finished, resubmitting for tomorrow..."
 sbatch --begin=now+24hours "$0"

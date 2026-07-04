@@ -166,7 +166,7 @@ class ArchiveScenarioTests(unittest.TestCase):
     def test_rebuild_tool_backfills_and_is_idempotent(self):
         append_index(OPENAPI, str(self.tar_path), "my-manuscript", 2)
         spec = importlib.util.spec_from_file_location(
-            "rebuild", REPO / "tool-rebuild-targz-index.py"
+            "rebuild", REPO / "scripts" / "tool-rebuild-targz-index.py"
         )
         rebuild = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(rebuild)

@@ -1,9 +1,15 @@
+# Allow running from anywhere: put the repo root (parent of scripts/) on sys.path
+import sys as _sys
+from pathlib import Path as _Path
+_sys.path.insert(0, str(_Path(__file__).resolve().parent.parent))
+
+
 import glob
 from lib.rtk_adapt import Manifest
 from rtk.utils import download_iiif_image
 import csv
 import os
-import cases
+import anycase as cases
 from typing import List, Tuple
 from rtk.task import DownloadIIIFManifestTask
 

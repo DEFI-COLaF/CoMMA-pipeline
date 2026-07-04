@@ -1,3 +1,9 @@
+# Allow running from anywhere: put the repo root (parent of scripts/) on sys.path
+import sys as _sys
+from pathlib import Path as _Path
+_sys.path.insert(0, str(_Path(__file__).resolve().parent.parent))
+
+
 import os
 import glob
 import argparse
@@ -33,7 +39,8 @@ def parse_file_sep(arg: str) -> Tuple[str, str]:
 
 if __name__ == "__main__":
     from worker_single_download import (load_biblissima_data, rename_manifest_download, parse_manifest,
-                                        count_xml_in_targz, uri_renamer)
+                                        count_xml_in_targz)
+    from lib.uris import to_openapi as uri_renamer
     parser = argparse.ArgumentParser(description="Parse source CSV to detect down work.")
     parser.add_argument(
         "--files",

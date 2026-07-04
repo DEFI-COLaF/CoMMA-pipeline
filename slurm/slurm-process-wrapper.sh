@@ -13,4 +13,4 @@ RESUBMIT=${RESUBMIT:-1}
 echo "Submitting job with CPUS=$CPUS, RAM=${RAM}G, REVERSE=$REVERSE, RESUBMIT=$RESUBMIT"
 
 sbatch --export=CPUS="${CPUS}",RAM="${RAM}",REVERSE="${REVERSE}",RESUBMIT="${RESUBMIT}" \
-  --cpus-per-task="${CPUS}" --mem="${RAM}G" slurm-processing.sbatch
+  --cpus-per-task="${CPUS}" --mem="${RAM}G" slurm/slurm-processing.sbatch
