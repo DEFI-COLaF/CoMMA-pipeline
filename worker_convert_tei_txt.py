@@ -1,17 +1,17 @@
 import glob
 import os.path
-from typing import List, Union, Optional
+from typing import List, Union
+from xml.sax.saxutils import escape
 import tqdm
-import re
 import lxml.etree as et
 import dataclasses
 import tarfile
-from typing import List, Tuple
 from concurrent.futures import ProcessPoolExecutor, as_completed
+
+from lib.tar_utils import find_tar_gz_files_recursive, read_archive_metadata
 
 
 _RUBRICATED = {"rend": "rubricated"}
-_INCIPIT = {"rend": "rubricated", "type": "incipit"}
 
 
 @dataclasses.dataclass
@@ -91,15 +91,6 @@ XSL = et.XSLT(et.parse("assets/01-simplify.xsl"))
 XSL2 = et.XSLT(et.parse("assets/02-raw-text.xsl"))
 
 
-def get_pages_in_sequence(directory: str):
-    mets = et.parse(f"{directory}/METS.xml")
-    pages = mets.xpath("/m:mets/m:fileSec/m:fileGrp/m:file/m:FLocat/@x:href", namespaces={
-        "m": "http://www.loc.gov/METS/",
-        "x": "http://www.w3.org/1999/xlink"
-    })
-    return list(map(lambda x: f"{directory}/{x}", pages))
-
-
 def simplify_and_lines(tar_gz, alto_path: str) -> List[Zone]:
     try:
         with tarfile.open(tar_gz, 'r:gz') as tar:
@@ -126,7 +117,7 @@ def simplify_and_lines(tar_gz, alto_path: str) -> List[Zone]:
     return zones
 
 
-def to_tei(file_order: List[str], tar_gz: str, output):
+def to_tei(file_order: List[str], tar_gz: str, output, manifest_uri: str = ""):
     body = et.Element("body")
     div = et.Element("div", attrib={"n": "pr"})
     body.append(div)
@@ -167,7 +158,7 @@ def to_tei(file_order: List[str], tar_gz: str, output):
             <p>Publication Information</p>
          </publicationStmt>
          <sourceDesc>
-            <p>Information about the source</p>
+            <p>Digitized from IIIF manifest <ref target="{escape(manifest_uri)}">{escape(manifest_uri)}</ref></p>
          </sourceDesc>
       </fileDesc>
      <encodingDesc>
@@ -184,67 +175,6 @@ def to_tei(file_order: List[str], tar_gz: str, output):
         return f"{output}/{os.path.basename(tar_gz)}-tei.xml"
 
 
-def get_manifest_and_xmls(tar_gz_path: str) -> Tuple[str | None, List[str]]:
-    """
-    Extracts the path to 'manifest.txt' and a list of all other .xml files in a .tar.gz archive.
-
-    Returns:
-        A tuple: (manifest_path, list_of_xml_paths)
-    """
-    manifest = None
-    xml_files = []
-
-    with tarfile.open(tar_gz_path, 'r:gz') as tar:
-        for member in tar.getmembers():
-            if member.isfile():
-                if member.name.endswith('manifest.txt'):
-                    manifest = member.name
-                elif member.name.endswith('.xml'):
-                    xml_files.append(member.name)
-
-    return manifest, xml_files
-
-
-def read_file_from_tar(tar_gz_path: str, file_name: str) -> str:
-    """
-    Reads the content of 'manifest.txt' from a .tar.gz archive.
-
-    Args:
-        tar_gz_path: Path to the .tar.gz archive.
-        manifest_name: The path to the manifest file inside the archive.
-
-    Returns:
-        The content of the manifest file as a string.
-    """
-    with tarfile.open(tar_gz_path, 'r:gz') as tar:
-        member = tar.getmember(file_name)
-        with tar.extractfile(member) as f:
-            return f.read().decode('utf-8')
-
-
-def find_tar_gz_files_recursive(dir_path: str) -> List[str]:
-    """
-    Explicitly recursive version to find all .tar.gz files in a directory tree.
-
-    Args:
-        dir_path (str): Root directory path to start the search.
-
-    Returns:
-        List[str]: A list of paths to found .tar.gz files.
-    """
-    matches = []
-    for entry in os.scandir(dir_path):
-        if entry.is_dir(follow_symlinks=False):
-            matches.extend(find_tar_gz_files_recursive(entry.path))
-        elif entry.is_file() and entry.name.endswith(".tar.gz"):
-            matches.append(entry.path)
-    return matches
-
-
-# Assumes these functions are already defined:
-# get_manifest_and_xmls, read_file_from_tar, to_tei, XSL2
-
-
 def process_tar(file: str):
     if len(glob.glob(f"txt/*/{os.path.basename(file)}.txt")):
         return file, "success"
@@ -253,11 +183,10 @@ def process_tar(file: str):
         os.makedirs(f"tei/{batch}", exist_ok=True)
         os.makedirs(f"txt/{batch}", exist_ok=True)
 
-        _, xmls = get_manifest_and_xmls(file)
-        manifest = read_file_from_tar(file, "manifest.txt")
-        manifest_uri, *files = manifest.split("\n")
-        files = [os.path.basename(f) for f in files]
-        filepath = to_tei(files, file, f"tei/{batch}")
+        provenance = read_archive_metadata(file)
+        manifest_uri = provenance["manifest_id"]
+        files = provenance["files"]
+        filepath = to_tei(files, file, f"tei/{batch}", manifest_uri=manifest_uri)
         conversion = XSL2(et.parse(filepath))
         output_path = f"txt/{batch}/{os.path.basename(file)}.txt"
         with open(output_path, "w") as f:
@@ -276,7 +205,7 @@ if __name__ == "__main__":
     # ]
     # print(f"Removed {l-len(files)} non complete manuscript")
     results = []
-    with ProcessPoolExecutor(max_workers=12) as executor:
+    with ProcessPoolExecutor(max_workers=int(os.getenv("CONVERT_WORKERS", 12))) as executor:
         futures = {executor.submit(process_tar, file): file for file in files}
         with tqdm.tqdm(total=len(futures)) as bar:
             for future in as_completed(futures):

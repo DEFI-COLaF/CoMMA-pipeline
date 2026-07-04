@@ -1,0 +1,22 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # Only the light deps: rtk/kraken/yolalto are cluster-only and the
+      # tests cover the rtk-free lib/ modules, the rebuild tool and the XSLs.
+      - name: Install test dependencies
+        run: pip install lxml tqdm
+      - name: Syntax-check every script
+        run: python -m py_compile *.py lib/*.py tests/*.py
+      - name: Run tests
+        run: python -m unittest discover -s tests -v

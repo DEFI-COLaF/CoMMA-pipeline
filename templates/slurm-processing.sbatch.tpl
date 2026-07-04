@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=comma-processing
-#SBATCH --time=7-00:00:00
-#SBATCH --output=./log/process_log_%j.log
+#SBATCH --time=${time}
+#SBATCH --output=./log/process_log_%j.log${extra_sbatch}
 
 
 BATCHING=$((CPUS - 4))

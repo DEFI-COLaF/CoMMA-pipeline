@@ -1,4 +1,4 @@
-from typing import Optional, Dict, List, Callable, Tuple
+from typing import Optional, List, Callable, Tuple
 from rtk.task import Task, InputType, InputListType, _sbmsg
 from concurrent.futures.thread import ThreadPoolExecutor
 import subprocess
@@ -9,8 +9,6 @@ from rtk import utils
 from itertools import repeat
 import re
 from pathlib import Path
-import tarfile
-import io
 import dataclasses
 import json
 import glob
@@ -235,37 +233,3 @@ class YaltoCommand(Task):
                 if isinstance(elem, str):
                     self._output_files.append(elem)
         bar.close()
-
-
-def create_tar_gz_archives(
-    uri_to_files: Dict[str, List[Path]],
-    naming_func: Callable[[str], Path],
-    ordering_dict: Dict[str, List[Path]],
-    manifest: str
-) -> None:
-    """
-    Creates a .tar.gz archive for each URI with a manifest and files.
-
-    Args:
-        uri_to_files: A dictionary mapping URIs to lists of local file Paths.
-        naming_func: A function that takes a URI and returns the target tar.gz file path.
-        ordering_dict: A dictionary mapping URIs to an ordered list of file Paths.
-    """
-    for uri, files in uri_to_files.items():
-        archive_path = naming_func(uri)
-        archive_path.parent.mkdir(parents=True, exist_ok=True)
-        ordered_files = ordering_dict.get(uri, files)
-        manifest_content = [uri] + [str(path) for path in ordered_files]
-
-        with tarfile.open(archive_path, "w:gz") as tar:
-            # Write the manifest.txt file into the archive
-            manifest_data = "\n".join(manifest_content).encode("utf-8")
-            manifest_info = tarfile.TarInfo(name="manifest.txt")
-            manifest_info.size = len(manifest_data)
-            tar.addfile(manifest_info, fileobj=io.BytesIO(manifest_data))
-
-            # Add each file to the archive
-            for file_path in files:
-                if Path(file_path).is_file():
-                    tar.add(file_path, arcname=Path(file_path).name)
-            tar.add(manifest, arcname="simpler_manifest.json")

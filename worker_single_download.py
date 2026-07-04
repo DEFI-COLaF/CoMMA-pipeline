@@ -19,6 +19,8 @@ import tqdm
 import unidecode
 from rtk import utils
 from lib.rtk_adapt import Manifest
+from lib.targz_index import archive_exists
+from lib.uris import to_openapi
 import anycase as cases
 
 
@@ -30,23 +32,15 @@ RETRY_DELAY = 10                                        # Seconds to wait before
 MAX_QUEUE_SIZE = 1240*60                                # Number of batch that we can keep without processing
 SLEEP_TIME_BETWEEN_POOL_CHECK = 20
 MANIFEST_DIRECTORY: str = "output"
+DATA_DIR: str = os.getenv("DATA_DIR", "data-in-process")  # Where manuscript image directories are created
 
 
 def check_sleep():
-    while (len(glob.glob("./*/*.jpg")) - len(glob.glob("./*/*.xml")) - 1000) >= MAX_QUEUE_SIZE:
+    while (len(glob.glob(f"{DATA_DIR}/*/*.jpg")) + len(glob.glob("./*/*.jpg"))
+           - len(glob.glob(f"{DATA_DIR}/*/*.xml")) - len(glob.glob("./*/*.xml")) - 1000) >= MAX_QUEUE_SIZE:
         print("[WAIT] Waiting for some queue space")
         time.sleep(SLEEP_TIME_BETWEEN_POOL_CHECK)
 
-
-
-def uri_renamer(uri: str) -> str:
-    return uri.replace(
-        "https://gallica.bnf.fr/iiif/ark:/12148/",
-        "https://openapi.bnf.fr/iiif/presentation/v3/ark:/12148/"
-    ).replace(
-        "http://gallica.bnf.fr/iiif/ark:/12148/",
-        "https://openapi.bnf.fr/iiif/presentation/v3/ark:/12148/"
-    )
 
 def count_xml_in_targz(path: str) -> int:
     """
@@ -175,7 +169,14 @@ def rename_manifest_download(
 def parse_manifest(file: str) -> List[Tuple[str, str, str]]:
     with open(file) as f:
         files = list([tuple(row) for row in csv.reader(f)])
-    return files
+    # Legacy CSVs recorded directories at the repo root: keep one only if a
+    # partial download already sits there, otherwise remap it under DATA_DIR.
+    remapped = []
+    for url, directory, filename in files:
+        if os.path.dirname(directory) != DATA_DIR and not os.path.isdir(directory):
+            directory = os.path.join(DATA_DIR, os.path.basename(directory))
+        remapped.append((url, directory, filename))
+    return remapped
 
 
 def rename_image_download(image_detail: Tuple[str, str, str]) -> str:
@@ -207,6 +208,15 @@ def kebab_with_fallback(string: str, fallback: Dict[str, Any] = None) -> str:
     return cases.to_kebab(unidecode.unidecode(string))
 
 
+def data_dir_naming(string: str, fallback: Dict[str, Any] = None) -> str:
+    """Directory recorded in the manifest CSV: DATA_DIR/<kebab-label>.
+
+    The kebab basename must never change (resume logic matches archives by
+    it); only the parent folder is added.
+    """
+    return os.path.join(DATA_DIR, kebab_with_fallback(string, fallback))
+
+
 def single_download(tracker: ManifestTracker, manifests: List[str], max_download: int):
     downloaded = 0
     for manifest_uri in manifests:
@@ -217,7 +227,7 @@ def single_download(tracker: ManifestTracker, manifests: List[str], max_download
 
         if requires_download:
             try:
-                result = utils.download_iiif_manifest(manifest_uri, manifest_csv, naming_function=kebab_with_fallback)
+                result = utils.download_iiif_manifest(manifest_uri, manifest_csv, naming_function=data_dir_naming)
                 if not result:
                     print("\t[Details] Manifest undownloadable")
                     with open(f"shame-list-w{tracker.worker}.txt", "a") as f:
@@ -231,19 +241,20 @@ def single_download(tracker: ManifestTracker, manifests: List[str], max_download
         images_details = parse_manifest(manifest_csv)
 
         current_manifest = Manifest.from_csv(manifest_uri, images_details, tracker=tracker)
-        current_directory_name = Path(tracker.manifest_to_directory[manifest_uri]).name
+        current_directory = tracker.manifest_to_directory[manifest_uri]
+        current_directory_name = Path(current_directory).name
 
         override_targz_exist = False
         # Only check mark if the current manifest is not the local one
         if not current_manifest.check_mark():
-            if os.path.exists(f"./{current_directory_name}"):
+            if os.path.exists(current_directory):
                 try:
-                    other_manifest = Manifest.from_json(f"./{current_directory_name}/.manifest.json")
+                    other_manifest = Manifest.from_json(str(Path(current_directory) / ".manifest.json"))
                     if len(other_manifest.images) < len(current_manifest.images):
                         override_targz_exist = True
                         print("\t[Info] Another manifest exist for the same manuscript but with less images,"
                               " we overwrite the folder")
-                        shutil.rmtree(f"./{current_directory_name}")
+                        shutil.rmtree(current_directory)
                         tracker.mark_done(other_manifest.manifest_id)
                     else:
                         tracker.mark_done(current_manifest.manifest_id)
@@ -253,16 +264,16 @@ def single_download(tracker: ManifestTracker, manifests: List[str], max_download
                 except Exception as e:
                     print(f"\t[Error] No manifest in pre-existing directory {current_directory_name}")
 
-            # ToDo: Implement a safeguard like a local file for existing directory to show which Manifest is the right one
-            #  and have it being checked between image download
-
             done = False
             if not override_targz_exist:
-                targz_found = glob.glob(f"targz/**/{current_directory_name}.tar.gz", recursive=True)
+                # targz/index.csv first (URI-aware, collision-proof), then the
+                # legacy name-glob for archives that predate the index
+                indexed = archive_exists(manifest_uri, current_directory_name)
+                targz_found = [indexed] if indexed else []
                 for targz_path in targz_found:
                     xml_in_targs: int = count_xml_in_targz(targz_path)
                     if xml_in_targs >= len(current_manifest.images):
-                        print(f"\ttargz/**/{current_directory_name}.tar.gz exists and is larger/same size as current manifest")
+                        print(f"\t{targz_path} exists and is larger/same size as current manifest")
                         tracker.mark_done(current_manifest.manifest_id)
                         done = True
                         break
@@ -412,11 +423,11 @@ if __name__ == "__main__":
     # Load manifests and filter out already completed ones
     df, Constant_Shelfmark = load_biblissima_data(args.files)
     for key in list(Constant_Shelfmark.keys()):
-        Constant_Shelfmark[uri_renamer(key)] = Constant_Shelfmark[key]
+        Constant_Shelfmark[to_openapi(key)] = Constant_Shelfmark[key]
 
     Constant_Max_Download: int = args.max_download
     df = [
-        uri_renamer(uri) if uri_renamer(uri) not in tracker.shamelist else uri # Keep good old URIs
+        to_openapi(uri) if to_openapi(uri) not in tracker.shamelist else uri # Keep good old URIs
         for uri in df
     ]
     df = [uri for uri in df if uri not in tracker.done and uri not in tracker.shamelist]
@@ -428,5 +439,4 @@ if __name__ == "__main__":
     # print(df)
     # Launch producer and consumer
     print("[Main] Starting downloader")
-    #df = pd.read_csv("extraction_biblissima_20250410.csv", delimiter=";")["manifest_url"]
     single_download(tracker, assigned_items, max_download=args.max_download)

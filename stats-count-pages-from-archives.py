@@ -1,12 +1,6 @@
-from convert import get_manifest_and_xmls
+from lib.tar_utils import get_manifest_and_xmls
 import glob
-import os.path
-from typing import List, Union, Optional
 import tqdm
-import lxml.etree as et
-import dataclasses
-import tarfile
-from typing import List, Tuple
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
 

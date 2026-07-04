@@ -9,3 +9,13 @@ env
 *.pt
 *.mlmodel
 wordcount.json
+# Source directories (kept despite `*/`)
+!/assets/
+!/lib/
+!/tests/
+!/templates/
+!/docs/
+!/.github/
+!/.github/workflows/
+# Local guidance for Claude Code, intentionally not committed
+CLAUDE.md

@@ -1,5 +1,5 @@
 import glob
-from rtk_adapt import Manifest
+from lib.rtk_adapt import Manifest
 from rtk.utils import download_iiif_image
 import csv
 import os
@@ -20,7 +20,7 @@ dl_manifests = DownloadIIIFManifestTask(
 require_download: List[Tuple[str, str, str]] = []
 
 
-for file in glob.glob("./*/.manifest.json"):
+for file in glob.glob(f"{os.getenv('DATA_DIR', 'data-in-process')}/*/.manifest.json") + glob.glob("./*/.manifest.json"):
     manifest = Manifest.from_json(file)
     images = manifest.image_order
     existing_images = [os.path.basename(f) for f in glob.glob(f"{manifest.directory}/*.jpg")]

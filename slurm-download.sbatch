@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=comma-download
 #SBATCH --output=logs/download_%A_%a.out
-#SBATCH --array=1-6  # Change this to use more workers
+#SBATCH --array=1-6
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=2G

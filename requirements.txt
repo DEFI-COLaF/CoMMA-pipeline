@@ -5,3 +5,8 @@ kraken @ git+https://github.com/PonteIneptique/kraken.git@feature/add-no-subline
 hanging_threads
 pandas
 py-anycase
+tqdm
+unidecode
+Pillow
+lxml
+threadpoolctl

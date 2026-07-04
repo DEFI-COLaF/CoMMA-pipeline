@@ -17,7 +17,10 @@ import lxml.etree as et
 import json
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
-from lib.rtk_adapt import YaltoCommand, Manifest, create_tar_gz_archives
+import anycase as cases
+from lib.rtk_adapt import YaltoCommand, Manifest
+from lib.tar_utils import create_tar_gz_archives, build_archive_metadata
+from lib.targz_index import append_index, archive_exists, resolve_archive_basename
 from lib.direct_kraken import KrakenDirectTask
 
 
@@ -47,6 +50,7 @@ YOLO_BATCH_SIZE: int = 1
 KRAKEN_BATCH_SIZE: int = int(os.getenv("KRAKEN_BATCH_SIZE", 40))
 TARGET_COUNT: int = 1 # 4 * YOLO_BATCH_SIZE # Number of jpg to reach to run produce
 TIME_BETWEEN_CHECK: int = 10
+DATA_DIR: str = os.getenv("DATA_DIR", "data-in-process")  # Where the download workers put manuscript dirs
 CACHED_DONE = {}
 CACHED_PARSABLE = {}
 REVERSE: bool = bool(int(os.getenv("REVERSE", 0))) # REVERSE=1 start from the end
@@ -105,12 +109,34 @@ def archive(directories_with_processed_files: List[Path], manifests: Dict[Path, 
                 # Create ordering based on JPGs with same stem
                 ordering = sorted(paths, key=_get_order)
 
-                # Archive
+                # Archive under the usual <dirname>.tar.gz, unless that name is
+                # already taken by a different manifest (kebab-label collision)
+                archive_basename = resolve_archive_basename(
+                    Path(manifest.directory).name, manifest.manifest_id
+                )
+                if archive_basename != Path(manifest.directory).name + ".tar.gz":
+                    print(f"[Processor] Name collision on {manifest.directory}, archiving as {archive_basename}")
+                archive_path = naming_func(archive_basename)
+
+                metadata = build_archive_metadata(
+                    manifest_id=manifest.manifest_id,
+                    directory=manifest.directory,
+                    image_order=manifest.image_order,
+                    total_images=manifest.total_images,
+                    errors=manifest.errors,
+                    csv_path=os.path.join("output", cases.to_kebab(manifest.manifest_id) + ".csv"),
+                    image_uris=manifest.uris,
+                )
+
                 create_tar_gz_archives(
                     uri_to_files={manifest.manifest_id: paths},
                     ordering_dict={manifest.manifest_id: ordering},
-                    naming_func=lambda x: naming_func(Path(manifest.directory).name + ".tar.gz"),
-                    manifest=manifest.json_path
+                    naming_func=lambda x: archive_path,
+                    metadata={manifest.manifest_id: metadata},
+                )
+                append_index(
+                    manifest.manifest_id, str(archive_path),
+                    Path(manifest.directory).name, len(paths),
                 )
 
                 # Cleanup
@@ -168,9 +194,11 @@ def process_worker(batches: List[Path]):
                 else:
                     print(f"{image.parent} has no manifests...")
                     continue
-            # if len(glob.glob(f"targz/**/{image.parent.name}.tar.gz", recursive=True)):
-            #     print(f"\ttargz/**/{image.parent.name}.tar.gz exists")
-            #     continue
+            # URI-aware resume check: only skips when the archive actually
+            # belongs to this manifest (kebab-label collisions excluded)
+            if archive_exists(manifests[image.parent].manifest_id, image.parent.name):
+                print(f"\tarchive for {image.parent.name} exists")
+                continue
             kept.append(image)
         images = [str(img) for img in kept]
         random.shuffle(images)
@@ -241,7 +269,10 @@ def find_manifest_dirs(root_dir: str) -> List[str]:
         List[str]: List of directory paths containing a '.manifest.json' file.
     """
     manifest_dirs = []
-    for manifest_file in map(Path, glob.glob(f"{root_dir}/*/.manifest.json")):
+    # DATA_DIR is where downloads land; the repo root is kept for manuscripts
+    # downloaded by older pipeline versions
+    candidates = glob.glob(f"{root_dir}/{DATA_DIR}/*/.manifest.json") + glob.glob(f"{root_dir}/*/.manifest.json")
+    for manifest_file in map(Path, candidates):
         try:
             with open(str(manifest_file)) as f:
                 json.load(f)
