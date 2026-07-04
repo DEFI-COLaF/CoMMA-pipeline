@@ -1,25 +1,25 @@
-import asyncio
 import os
 import time
 import datetime
 import glob
 import csv
 import argparse
+import tarfile
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Dict, Tuple, Set
+from typing import List, Dict, Tuple, Set, Any, Optional
 from collections import defaultdict, deque
 from urllib.parse import urlparse
 from PIL import Image
+import shutil
 
 import pandas as pd
 import tqdm
 import unidecode
-from rtk.task import DownloadIIIFImageTask, DownloadIIIFManifestTask
 from rtk import utils
 from lib.rtk_adapt import Manifest
-import cases
+import anycase as cases
 
 
 # Constants
@@ -30,6 +30,47 @@ RETRY_DELAY = 10                                        # Seconds to wait before
 MAX_QUEUE_SIZE = 1240*60                                # Number of batch that we can keep without processing
 SLEEP_TIME_BETWEEN_POOL_CHECK = 20
 MANIFEST_DIRECTORY: str = "output"
+
+
+def check_sleep():
+    while (len(glob.glob("./*/*.jpg")) - len(glob.glob("./*/*.xml")) - 1000) >= MAX_QUEUE_SIZE:
+        print("[WAIT] Waiting for some queue space")
+        time.sleep(SLEEP_TIME_BETWEEN_POOL_CHECK)
+
+
+
+def uri_renamer(uri: str) -> str:
+    return uri.replace(
+        "https://gallica.bnf.fr/iiif/ark:/12148/",
+        "https://openapi.bnf.fr/iiif/presentation/v3/ark:/12148/"
+    ).replace(
+        "http://gallica.bnf.fr/iiif/ark:/12148/",
+        "https://openapi.bnf.fr/iiif/presentation/v3/ark:/12148/"
+    )
+
+def count_xml_in_targz(path: str) -> int:
+    """
+    Count the number of .xml files in each given .tar.gz archive.
+
+    Args:
+        path (Path): List of paths to .tar.gz files.
+
+    Returns:
+        Dict[Path, int]: Mapping from archive path to the number of .xml files found.
+    """
+    path = Path(path)
+
+    count = 0
+    try:
+        with tarfile.open(path, "r:gz") as tar:
+            for member in tar.getmembers():
+                if member.isfile() and member.name.lower().endswith(".xml"):
+                    count += 1
+    except tarfile.TarError as e:
+        print(f"Error reading {path}: {e}")
+        count = 0
+
+    return count
 
 
 # Represents a successfully downloaded image and which manifest it belongs to
@@ -141,14 +182,33 @@ def rename_image_download(image_detail: Tuple[str, str, str]) -> str:
     return os.path.join(image_detail[1], f"{image_detail[2]}.jpg")
 
 
-def kebab_with_fallback(string: str) -> str:
-    if "BSB " in string or "bsb " in string.lower():
-        return cases.to_kebab(unidecode.unidecode(string.split("-")[-1].strip()))
-    else:
-        return cases.to_kebab(unidecode.unidecode(string))
+def get_identifier(iiif_object: Dict[str, Any]) -> Optional[str]:
+    identifiers = [None]
+    for entry in iiif_object.get("metadata", []):
+        labels = entry.get("label", None)
+        if isinstance(labels, list):
+            labels = {
+                (lbl.get("@value", "").lower() if isinstance(lbl, dict) else lbl.lower())
+                for lbl in entry.get("label")
+            }
+        else:
+            labels = {labels.lower()}
+        if "shelfmark" in labels:
+            return entry["value"]
+        elif "identifier" in labels:
+            return entry["value"]
+
+def kebab_with_fallback(string: str, fallback: Dict[str, Any] = None) -> str:
+    if fallback:# and fallback.get("@id") in Constant_Shelfmark:
+        _id = fallback.get("@id", fallback.get("id"))
+        if _id in Constant_Shelfmark:
+            string = Constant_Shelfmark[_id]
+
+    return cases.to_kebab(unidecode.unidecode(string))
 
 
-def single_download(tracker: ManifestTracker, manifests: List[str]):
+def single_download(tracker: ManifestTracker, manifests: List[str], max_download: int):
+    downloaded = 0
     for manifest_uri in manifests:
         print(f"[Downloader] Downloading manifest {manifest_uri}")
         print(f"[TIME] {datetime.datetime.now()}")
@@ -164,35 +224,53 @@ def single_download(tracker: ManifestTracker, manifests: List[str]):
                         f.writelines([str(manifest_uri) + "\n"])
                     continue
             except Exception as E:
-                print(f"\t[ERROR]{E}")
+                print(f"\t[ERROR] {E}")
+                print(E)
                 continue
 
         images_details = parse_manifest(manifest_csv)
 
-        # Compute how many images we have to do per manuscript
-        image_count = len(images_details)
-        # We still record stuff in the tracker, just in case
-        for (_, output_directory, filename) in images_details:
-            tracker.register_dir(manifest_uri, output_directory)
-            tracker.record_image_order(manifest_uri, filename)
-        # Then register this expectation
-        tracker.add_expected(manifest_uri, image_count)
+        current_manifest = Manifest.from_csv(manifest_uri, images_details, tracker=tracker)
+        current_directory_name = Path(tracker.manifest_to_directory[manifest_uri]).name
 
-        cased = Path(tracker.manifest_to_directory[manifest_uri]).name
+        override_targz_exist = False
+        # Only check mark if the current manifest is not the local one
+        if not current_manifest.check_mark():
+            if os.path.exists(f"./{current_directory_name}"):
+                try:
+                    other_manifest = Manifest.from_json(f"./{current_directory_name}/.manifest.json")
+                    if len(other_manifest.images) < len(current_manifest.images):
+                        override_targz_exist = True
+                        print("\t[Info] Another manifest exist for the same manuscript but with less images,"
+                              " we overwrite the folder")
+                        shutil.rmtree(f"./{current_directory_name}")
+                        tracker.mark_done(other_manifest.manifest_id)
+                    else:
+                        tracker.mark_done(current_manifest.manifest_id)
+                        print("\t[Info] Another manifest exist for the same manuscript but with more images, passing")
+                        check_sleep()
+                        continue
+                except Exception as e:
+                    print(f"\t[Error] No manifest in pre-existing directory {current_directory_name}")
 
-        if len(glob.glob(f"targz/**/{cased}.tar.gz", recursive=True)):
-            print(f"\ttargz/**/{cased}.tar.gz exists")
-            tracker.mark_done(manifest_uri)
-            continue
+            # ToDo: Implement a safeguard like a local file for existing directory to show which Manifest is the right one
+            #  and have it being checked between image download
 
-        # We rewrite the json just in case
-        m = Manifest(
-            manifest_id=manifest_uri,
-            directory=tracker.manifest_to_directory[manifest_uri],
-            image_order=tracker.order[manifest_uri],
-            total_images=tracker.expected[manifest_uri]
-        )
-        m.to_json()
+            done = False
+            if not override_targz_exist:
+                targz_found = glob.glob(f"targz/**/{current_directory_name}.tar.gz", recursive=True)
+                for targz_path in targz_found:
+                    xml_in_targs: int = count_xml_in_targz(targz_path)
+                    if xml_in_targs >= len(current_manifest.images):
+                        print(f"\ttargz/**/{current_directory_name}.tar.gz exists and is larger/same size as current manifest")
+                        tracker.mark_done(current_manifest.manifest_id)
+                        done = True
+                        break
+            if done:
+                check_sleep()
+                continue
+        current_manifest.to_json()
+        current_manifest.mark()
 
         # Now we prepare the images
         print(f"\t[Details] {len(images_details)} in the manifest")
@@ -222,6 +300,8 @@ def single_download(tracker: ManifestTracker, manifests: List[str]):
         aborted = False
         failed = []
         for image in tqdm.tqdm(images_to_download):
+            if not current_manifest.check_mark():
+                break
             result = utils.download_iiif_image(
                 image[0],
                 rename_image_download(image),
@@ -230,54 +310,123 @@ def single_download(tracker: ManifestTracker, manifests: List[str]):
                 retries_no_options = RETRY_NO_OPTIONS,
                 time_between_retries = RETRY_DELAY
             )
+            # In case time worked against you...
+            if not current_manifest.check_mark():
+                shutil.rmtree(rename_image_download(image), ignore_errors=True)
+                break
             if not result:
                 errors += 1
-                m.add_errors(image[0])
+                current_manifest.add_errors(image[0])
                 # At a maximum of 10% of errors for 50 images or more, we forget about this manuscript
                 if len(images_details) > 30 and errors / (len(images_details)) > .1:
                     print("\t[ERROR] Too much errors (>10% of 4xx/5xx), moving to next manuscript.")
-                    m.to_json()
+                    current_manifest.to_json()
                     aborted = True
                     continue
+            downloaded += 1
+            if max_download != -1 and downloaded >= max_download:
+                print(f"Stopping the run here, reached maximum downloads {downloaded}")
+                return
         if aborted:
             with open(f"shame-list-w{tracker.worker}.txt", "a") as f:
                 f.writelines([str(manifest_uri)+"\n"])
-            #tracker.mark_done(manifest_uri)
-        print(f"MANIFEST {manifest_uri} ==> ({len(m.found_images())}/{len(m.image_order)}")
-        print(f"\t[Details] Directory is {m.directory}")
-
+        print(f"MANIFEST {manifest_uri} ==> ({len(current_manifest.found_images())}/{len(current_manifest.image_order)}")
+        print(f"\t[Details] Directory is {current_manifest.directory}")
+        print(f"Total download: {downloaded}")
         # Now check if pause !
 
-        while (len(glob.glob("./*/*.jpg")) - len(glob.glob("./*/*.xml")) - 1000) >= MAX_QUEUE_SIZE:
-            print("[WAIT] Waiting for some queue space")
-            time.sleep(SLEEP_TIME_BETWEEN_POOL_CHECK)
+        check_sleep()
+
+
+def load_biblissima_data(csv_files: List[Tuple[str, str]]) -> Tuple[List[str], dict]:
+    """
+    Load multiple CSV files containing 'cote' and 'manifest_url' columns,
+    build a shelfmark mapping, and return a DataFrame of unique manifest URLs
+    and a dictionary mapping manifest URLs to shelfmarks.
+
+    Parameters
+    ----------
+    csv_files : List[str]
+        List of CSV file paths to read.
+    delimiter : str, optional
+        CSV delimiter (default: ';').
+
+    Returns
+    -------
+    df : pd.DataFrame
+        DataFrame with a single column 'manifest_url' containing unique values.
+    Constant_Shelfmark : dict
+        Mapping from manifest_url to cote.
+    """
+    all_dfs = []
+    shelfmark_mappings = {}
+
+    for file, delimiter in csv_files:
+        df_shelfmark = pd.read_csv(file, delimiter=delimiter)[["cote", "manifest_url"]]
+        mapping = {value: key for _, (key, value) in df_shelfmark.iterrows()}
+        shelfmark_mappings.update(mapping)
+        all_dfs.append(df_shelfmark[["manifest_url"]])
+
+    # Combine all DataFrames and get unique manifest URLs
+    df = pd.concat(all_dfs, ignore_index=True)
+    df = pd.DataFrame({"manifest_url": df["manifest_url"].unique()})["manifest_url"].tolist()
+
+    return df, shelfmark_mappings
+
+
+def parse_file_sep(arg: str) -> Tuple[str, str]:
+    """
+    Parse a string in the format 'filename=separator'.
+    Example: 'data.csv=;' -> ('data.csv', ';')
+    """
+    if '=' not in arg:
+        raise argparse.ArgumentTypeError(
+            "Each file must be specified as 'filename=separator', e.g. 'data.csv=;'"
+        )
+    filename, sep = arg.split('=', 1)
+    if not filename or not sep:
+        raise argparse.ArgumentTypeError(f"Invalid format for file argument: '{arg}'")
+    return filename, sep
 
 if __name__ == "__main__":
+
     parser = argparse.ArgumentParser(description="Split work among workers.")
     parser.add_argument('--max', type=int, required=True, help='Total number of workers')
     parser.add_argument('--index', type=int, required=True, help='Index of this worker')
-
+    parser.add_argument(
+        "--files",
+        nargs="+",
+        type=parse_file_sep,
+        metavar="FILE=SEP",
+        help="List of CSV files with their separators, e.g. 'file.csv=;' or 'data.csv=$'",
+        required=True,
+    )
+    parser.add_argument('--queue', type=int, default=MAX_QUEUE_SIZE, help='Total number of workers')
+    parser.add_argument("--max_download", type=int, required=False, default=-1)
     args = parser.parse_args()
+
+    MAX_QUEUE_SIZE = args.queue
 
     tracker = ManifestTracker(args.index)
 
     # Load manifests and filter out already completed ones
-    df = pd.read_csv("extraction_biblissima_20250410.csv", delimiter=";")["manifest_url"]
-    df = df.unique().tolist()
-    df = df + pd.read_csv("biblissima_bodleian.csv", delimiter=";")["manifest_url"].unique().tolist()
-    uri_renamer = lambda u: u.replace("https://gallica.bnf.fr/iiif/ark:/12148/", "https://openapi.bnf.fr/iiif/presentation/v3/ark:/12148/")
+    df, Constant_Shelfmark = load_biblissima_data(args.files)
+    for key in list(Constant_Shelfmark.keys()):
+        Constant_Shelfmark[uri_renamer(key)] = Constant_Shelfmark[key]
+
+    Constant_Max_Download: int = args.max_download
     df = [
         uri_renamer(uri) if uri_renamer(uri) not in tracker.shamelist else uri # Keep good old URIs
         for uri in df
     ]
     df = [uri for uri in df if uri not in tracker.done and uri not in tracker.shamelist]
     df = alternate_by_domain(pd.Series(df)).tolist()
-
-
-    assigned_items = split_work(df, args.max, args.index)
-
+    if args.max > 1:
+        assigned_items = split_work(df, args.max, args.index)
+    else:
+        assigned_items = df
     # print(df)
     # Launch producer and consumer
     print("[Main] Starting downloader")
     #df = pd.read_csv("extraction_biblissima_20250410.csv", delimiter=";")["manifest_url"]
-    single_download(tracker, assigned_items)
+    single_download(tracker, assigned_items, max_download=args.max_download)

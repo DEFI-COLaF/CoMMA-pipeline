@@ -172,10 +172,7 @@ def to_tei(file_order: List[str], tar_gz: str, output):
       </fileDesc>
      <encodingDesc>
         <refsDecl>
-           <citeStructure match="//body/div" use="@n">
-              <citeData use="head[@type='modern']" property="dc:title"/>
-              <citeData use="head[@type!='']" property="dc:title"/>
-           </citeStructure>
+           <citeStructure match="//body/div/ab//pb" use="@n" unit="digitized_page" />
         </refsDecl>
      </encodingDesc>
   </teiHeader>

@@ -1,4 +1,4 @@
-from typing import Optional, Dict, List, Callable
+from typing import Optional, Dict, List, Callable, Tuple
 from rtk.task import Task, InputType, InputListType, _sbmsg
 from concurrent.futures.thread import ThreadPoolExecutor
 import subprocess
@@ -23,6 +23,22 @@ class Manifest:
     image_order: List[str] = dataclasses.field(default_factory=list)
     total_images: int = 0
     errors: List[str] = dataclasses.field(default_factory=list)
+    uris: List[str] = dataclasses.field(default_factory=list)
+
+    def mark(self):
+        with open(str(Path(self.directory) / ".mark"), "w") as f:
+            f.write(self.manifest_id.strip())
+
+    def check_mark(self) -> bool:
+        if os.path.exists(str(Path(self.directory) / ".mark")):
+            with open(str(Path(self.directory) / ".mark")) as f:
+                m = f.read().strip()
+            return m == self.manifest_id
+        return False
+
+    @property
+    def json_path(self) -> str:
+        return str(Path(self.directory) / ".manifest.json")
 
     @property
     def images(self):
@@ -42,6 +58,34 @@ class Manifest:
             d = json.load(f)
         return cls(**d)
 
+    @classmethod
+    def from_csv( cls, manifest_uri: str, images: List[Tuple[str, str, str]], tracker: Optional["Tracker"] = None):
+        # Compute how many images we have to do per manuscript
+        image_count = len(images)
+        directory = None
+        image_order: List[str] = []
+        image_uris: List[str] = []
+        # We still record stuff in the tracker, just in case
+        for (uri, output_directory, filename) in images:
+            directory = output_directory
+            image_order.append(filename)
+            image_uris.append(uri)
+            if tracker:
+                tracker.register_dir(manifest_uri, output_directory)
+                tracker.record_image_order(manifest_uri, filename)
+
+        if tracker:
+            # Then register this expectation
+            tracker.add_expected(manifest_uri, image_count)
+
+        return cls(
+            manifest_id=manifest_uri,
+            directory=directory,
+            image_order=image_order,
+            total_images=image_count,
+            uris=image_uris
+        )
+
     def found_images(self):
         return glob.glob(str(Path(self.directory) / "*.jpg"))
 
@@ -50,14 +94,14 @@ class Manifest:
             checking_function = lambda x: utils.check_parsable(x) and utils.check_content(x, ratio=1)
 
         done = [
-            file
-            for file in glob.glob(str(Path(self.directory) / "*.xml"))
-            if checking_function(file)
+            file.stem
+            for file in Path(self.directory).glob("*.xml")
+            if checking_function(str(file))
         ]
         if log:
             print(f"{self.directory}: {len(done)} imgs / {self.total_images} jpgs ({len(self.found_images())}) [{self.manifest_id}]")
 
-        return len(done) == self.total_images
+        return self.total_images == len(set(done).intersection(self.image_order))
 
 
 class YaltoCommand(Task):
@@ -197,6 +241,7 @@ def create_tar_gz_archives(
     uri_to_files: Dict[str, List[Path]],
     naming_func: Callable[[str], Path],
     ordering_dict: Dict[str, List[Path]],
+    manifest: str
 ) -> None:
     """
     Creates a .tar.gz archive for each URI with a manifest and files.
@@ -223,3 +268,4 @@ def create_tar_gz_archives(
             for file_path in files:
                 if Path(file_path).is_file():
                     tar.add(file_path, arcname=Path(file_path).name)
+            tar.add(manifest, arcname="simpler_manifest.json")

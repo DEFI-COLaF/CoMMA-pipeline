@@ -1,1 +1,11 @@
-*
+ignore-*.py
+*.csv
+.venv
+.idea
+__pycache__/
+*.txt
+*/
+env
+*.pt
+*.mlmodel
+wordcount.json

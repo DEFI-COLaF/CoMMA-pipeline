@@ -14,6 +14,8 @@ source env/bin/activate
 dt=$(date '+%d/%m/%Y %H:%M:%S');
 echo "$dt"
 
-python worker-convert-tei-txt.py
-python stats-count.py
+python worker_convert_tei_txt.py
+python stats_count.py
 
+echo "[$(date)] Job finished, resubmitting for tomorrow..."
+sbatch --begin=now+24hours "$0"

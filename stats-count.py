@@ -1,30 +1,74 @@
 import os
+import json
+from glob import glob
 import tqdm
+from typing import Dict, Tuple
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
-def count_tokens_in_file(filepath: str) -> int:
-    """Count whitespace-separated tokens in a single file."""
-    with open(filepath, 'r', encoding='utf-8') as f:
-        text = f.read()
-    return len([x for x in text.split() if x and x.strip() if len(x) >= 2])
+CACHE_PATH = "wordcount.json"
+NUM_PROCESSES = 15
 
-def count_tokens_in_directory(directory: str):
-    """Count total and per-file tokens in a directory."""
-    total_tokens = 0
-    tokens_per_file = {}
+def load_cache(path: str) -> Dict[str, Dict[str, int]]:
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {}
 
-    for filename in tqdm.tqdm(os.listdir(directory)):
-        filepath = os.path.join(directory, filename)
-        if os.path.isfile(filepath):
-            token_count = count_tokens_in_file(filepath)
-            tokens_per_file[filename] = token_count
-            total_tokens += token_count
+def save_cache(path: str, cache: Dict[str, Dict[str, int]]) -> None:
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(cache, f, indent=2, ensure_ascii=False)
 
+def count_words_if_modified(filepath: str, cached_data: Dict[str, Dict[str, int]]) -> Tuple[str, Dict[str, int] | None]:
+    abs_path = os.path.basename(filepath)
+    try:
+        mod_time = os.path.getmtime(filepath)
+    except FileNotFoundError:
+        return abs_path, None  # File might have been deleted between scan and read
 
-    return total_tokens, tokens_per_file
+    if abs_path in cached_data and cached_data[abs_path].get("mtime") == mod_time:
+        return abs_path, None  # No need to update
 
-# Example usage
-directory = "txt"
-total, per_file = count_tokens_in_directory(directory)
+    try:
+        with open(filepath, "r", encoding="utf-8") as f:
+            text = f.read()
+        word_count = len(text.split())
+        return abs_path, {"count": word_count, "mtime": mod_time}
+    except Exception as e:
+        print(f"Error processing {filepath}: {e}")
+        return abs_path, None
 
-print(f"Total tokens: {total}")
-print(f"{total/len(per_file)} tokens / file")
+def main():
+    cache = load_cache(CACHE_PATH)
+    txt_files = glob("txt/**/*.txt", recursive=True)
+    updated = False
+    pbar = tqdm.tqdm(total=len(txt_files))
+    total = 0
+    with ProcessPoolExecutor(max_workers=NUM_PROCESSES) as executor:
+        futures = [executor.submit(count_words_if_modified, path, cache) for path in txt_files]
+
+        for future in as_completed(futures):
+            path, result = future.result()
+            if result is not None:
+                cache[path] = result
+                #print(f"Updated: {path}")
+                updated = True
+            #else:
+                #print(f"Cached: {path}")
+            pbar.update(1)
+            total += cache[path]["count"]
+            pbar.set_description(f"Tokens: {total:,}")
+
+    if updated:
+        save_cache(CACHE_PATH, cache)
+        print("Cache updated.")
+    else:
+        print("No changes detected. Cache is up-to-date.")
+
+    # Optional summary
+    real_total = 0
+    for path, data in cache.items():
+        real_total += data["count"]
+    print(f"Real total: {real_total:,} words")
+
+if __name__ == "__main__":
+    main()

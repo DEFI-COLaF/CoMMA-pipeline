@@ -14,5 +14,5 @@ source env/bin/activate
 dt=$(date '+%d/%m/%Y %H:%M:%S');
 echo "$dt"
 
-python worker-convert-json.py
+python worker_convert_json.py
 
